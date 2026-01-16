@@ -29,7 +29,11 @@ pub fn scan_and_parse(root_dir: &Path) -> Result<ParsedConfig> {
             let mut file_items = Vec::new();
 
             if let Some(menu) = config_file.menu {
-                menus.push((path.to_path_buf(), menu));
+                // 获取Kconfig.toml相对于根目录的相对路径
+                let relative_path = path
+                    .strip_prefix(root_dir)
+                    .with_context(|| format!("Failed to get relative path: {:?}", path))?;
+                menus.push((relative_path.to_path_buf(), menu));
             }
 
             if let Some(configs) = config_file.configs {
