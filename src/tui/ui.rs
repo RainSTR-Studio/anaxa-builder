@@ -35,10 +35,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 }
 
 fn draw_main(f: &mut Frame, app: &mut App, area: Rect) {
-    let node = app.get_current_node();
+    let (configs, children) = app.get_visible_items();
     let mut items = Vec::new();
 
-    for config in &node.configs {
+    for config in configs {
         let val = app.values.get(&config.name);
         let val_str = match config.config_type {
             ConfigType::Bool => {
@@ -65,7 +65,7 @@ fn draw_main(f: &mut Frame, app: &mut App, area: Rect) {
         ])));
     }
 
-    for child in &node.children {
+    for child in children {
         items.push(ListItem::new(Line::from(vec![
             Span::styled(
                 format!("{:<30}", child.desc),
@@ -151,25 +151,26 @@ fn draw_notification(f: &mut Frame, msg: &str) {
 }
 
 fn draw_quit_confirm(f: &mut Frame) {
-    let area = centered_rect(50, 20, f.area());
+    let area = centered_rect(50, 25, f.area());
     f.render_widget(Clear, area);
 
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" Unsaved Changes ")
-        .border_style(Style::default().fg(Color::Red));
+        .border_style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD));
 
-    let text =
-        Paragraph::new("\n  You have unsaved changes.\n\n  Do you really want to quit? (y/n)")
-            .block(block)
-            .alignment(ratatui::layout::Alignment::Center);
+    let text = Paragraph::new(
+        "\n  You have unsaved changes.\n\n  [Y] Save and Quit\n  [N] Discard and Quit\n  [Esc] Cancel",
+    )
+    .block(block)
+    .alignment(ratatui::layout::Alignment::Center);
 
     f.render_widget(text, area);
 }
 
 fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
     let help_text = if app.show_quit_confirm {
-        " [Y] Yes, Quit without saving  [N/Esc] No, Stay "
+        " [Y] Save & Quit  [N] Discard & Quit  [Esc] Stay "
     } else if app.notification.is_some() {
         " [Any Key] Close Notification "
     } else if let Some(config) = &app.editing_config {

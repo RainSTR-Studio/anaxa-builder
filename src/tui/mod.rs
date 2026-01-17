@@ -33,6 +33,7 @@ pub struct App {
     pub notification: Option<String>,
     pub is_dirty: bool,
     pub show_quit_confirm: bool,
+    pub evaluator: crate::evaluator::Evaluator,
 }
 
 impl App {
@@ -41,6 +42,11 @@ impl App {
         let values = config_io::load_config(&config_path, &flattened_items)?;
         let mut list_state = ListState::default();
         list_state.select(Some(0));
+
+        let mut evaluator = crate::evaluator::Evaluator::new();
+        for (name, val) in &values {
+            let _ = evaluator.set_variable(name, val);
+        }
 
         Ok(Self {
             root_node,
@@ -56,7 +62,14 @@ impl App {
             notification: None,
             is_dirty: false,
             show_quit_confirm: false,
+            evaluator,
         })
+    }
+
+    pub fn update_evaluator(&mut self) {
+        for (name, val) in &self.values {
+            let _ = self.evaluator.set_variable(name, val);
+        }
     }
 
     pub fn get_current_node(&self) -> &ConfigNode {
@@ -77,9 +90,39 @@ impl App {
         path.join(" > ")
     }
 
-    pub fn next(&mut self) {
+    pub fn is_visible_config(&self, config: &ConfigItem) -> bool {
+        config
+            .depends_on
+            .as_ref()
+            .map(|expr| self.evaluator.check_dependency(expr).unwrap_or(true))
+            .unwrap_or(true)
+    }
+
+    pub fn is_visible_node(&self, node: &ConfigNode) -> bool {
+        node.depends_on
+            .as_ref()
+            .map(|expr| self.evaluator.check_dependency(expr).unwrap_or(true))
+            .unwrap_or(true)
+    }
+
+    pub fn get_visible_items(&self) -> (Vec<&ConfigItem>, Vec<&ConfigNode>) {
         let node = self.get_current_node();
-        let total = node.configs.len() + node.children.len();
+        let configs: Vec<&ConfigItem> = node
+            .configs
+            .iter()
+            .filter(|c| self.is_visible_config(c))
+            .collect();
+        let children: Vec<&ConfigNode> = node
+            .children
+            .iter()
+            .filter(|n| self.is_visible_node(n))
+            .collect();
+        (configs, children)
+    }
+
+    pub fn next(&mut self) {
+        let (configs, children) = self.get_visible_items();
+        let total = configs.len() + children.len();
         if total == 0 {
             return;
         }
@@ -97,8 +140,8 @@ impl App {
     }
 
     pub fn previous(&mut self) {
-        let node = self.get_current_node();
-        let total = node.configs.len() + node.children.len();
+        let (configs, children) = self.get_visible_items();
+        let total = configs.len() + children.len();
         if total == 0 {
             return;
         }
@@ -117,11 +160,22 @@ impl App {
 
     pub fn enter(&mut self) {
         let selected = self.list_state.selected().unwrap_or(0);
-        let node = self.get_current_node();
-        if selected >= node.configs.len() {
-            let child_index = selected - node.configs.len();
-            self.current_node_path.push(child_index);
-            self.list_state.select(Some(0));
+        let (configs, children) = self.get_visible_items();
+
+        if selected >= configs.len() {
+            let child_index_in_visible = selected - configs.len();
+            if let Some(target_node) = children.get(child_index_in_visible) {
+                let parent_node = self.get_current_node();
+                let real_index = parent_node
+                    .children
+                    .iter()
+                    .position(|n| std::ptr::eq(n, *target_node));
+
+                if let Some(idx) = real_index {
+                    self.current_node_path.push(idx);
+                    self.list_state.select(Some(0));
+                }
+            }
         }
     }
 
@@ -134,13 +188,12 @@ impl App {
 
     pub fn toggle_bool(&mut self) {
         let selected = self.list_state.selected().unwrap_or(0);
-        let config = {
-            let node = self.get_current_node();
-            if selected < node.configs.len() {
-                Some(node.configs[selected].clone())
-            } else {
-                None
-            }
+        let (visible_configs, _) = self.get_visible_items();
+
+        let config = if selected < visible_configs.len() {
+            Some(visible_configs[selected].clone())
+        } else {
+            None
         };
 
         if let Some(config) = config {
@@ -154,6 +207,7 @@ impl App {
                     self.values
                         .insert(config.name.clone(), Value::Boolean(!current_val));
                     self.is_dirty = true;
+                    self.update_evaluator();
                 }
                 crate::schema::ConfigType::Int
                 | crate::schema::ConfigType::Hex
@@ -185,6 +239,7 @@ impl App {
                     if let Some(opt) = options.get(selected) {
                         self.values.insert(config.name, Value::String(opt.clone()));
                         self.is_dirty = true;
+                        self.update_evaluator();
                         self.notify(format!("Selected: {}", opt));
                     }
                 }
@@ -269,6 +324,7 @@ impl App {
             if let Some(val) = value {
                 self.values.insert(config.name, val);
                 self.is_dirty = true;
+                self.update_evaluator();
                 self.notify("Value updated".to_string());
             }
             self.input_buffer.clear();
@@ -325,8 +381,12 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
 
             if app.show_quit_confirm {
                 match key.code {
-                    KeyCode::Char('y') | KeyCode::Char('Y') => return Ok(()),
-                    KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                    KeyCode::Char('y') | KeyCode::Char('Y') => {
+                        let _ = app.save();
+                        return Ok(());
+                    }
+                    KeyCode::Char('n') | KeyCode::Char('N') => return Ok(()),
+                    KeyCode::Esc => {
                         app.show_quit_confirm = false;
                     }
                     _ => {}
