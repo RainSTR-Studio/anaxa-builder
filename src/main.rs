@@ -4,7 +4,8 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "anaxa-config")]
+#[command(name = "cargo-anaxa")]
+#[command(bin_name = "cargo anaxa")]
 #[command(version, about = "Anaxa Configuration System", long_about = None)]
 struct Cli {
     #[command(subcommand)]
@@ -72,7 +73,14 @@ enum Commands {
 }
 
 fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let mut args: Vec<String> = std::env::args().collect();
+    // When called as `cargo anaxa`, the arguments are `["cargo-anaxa", "anaxa", ...]`
+    // We skip the "anaxa" part if it's there.
+    if args.len() > 1 && args[1] == "anaxa" {
+        args.remove(1);
+    }
+
+    let cli = Cli::parse_from(args);
     let dir = &cli.dir;
 
     match &cli.command {

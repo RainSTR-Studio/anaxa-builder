@@ -1,11 +1,11 @@
 use crate::schema::ConfigType;
 use crate::tui::App;
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
+    Frame,
 };
 
 pub fn draw(f: &mut Frame, app: &mut App) {

@@ -1,5 +1,5 @@
 use crate::schema::ConfigItem;
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use petgraph::algo::tarjan_scc;
 use petgraph::graphmap::DiGraphMap;
 use std::collections::HashMap;
