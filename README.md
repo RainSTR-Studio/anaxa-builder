@@ -21,12 +21,7 @@
 ## 安装
 
 ```bash
-# 克隆仓库
-git clone https://github.com/RainSTR-Studio/anaxa-builder.git
-cd anaxa-builder
-
-# 使用 cargo 安装
-cargo install --path .
+cargo install anaxa-builder
 ```
 
 ## 快速开始
@@ -73,17 +68,17 @@ desc = "Device identification name"
 
 ```bash
 # 检查 Schema 有效性并检测循环依赖
-cargo run -- check
+cargo anaxa check
 
 # 查看解析后的配置结构
-cargo run -- dump
+cargo anaxa dump
 ```
 
 ### 3. 交互式配置
 
 ```bash
 # 启动 TUI 配置界面
-cargo run -- menuconfig
+cargo anaxa menuconfig
 ```
 
 在 TUI 中：
@@ -100,7 +95,7 @@ cargo run -- menuconfig
 
 ```bash
 # 生成代码到 generated/ 目录
-cargo run -- generate
+cargo anaxa generate
 ```
 
 这将生成：
@@ -193,16 +188,16 @@ anaxa-builder/
 
 ```bash
 # 验证 Schema 和依赖
-cargo run -- check
+cargo anaxa check
 
 # 查看配置结构
-cargo run -- dump
+cargo anaxa dump
 
 # 启动交互式配置
-cargo run -- menuconfig
+cargo anaxa menuconfig
 
 # 生成代码
-cargo run -- generate
+cargo anaxa generate
 ```
 
 ## 值优先级
