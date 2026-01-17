@@ -50,8 +50,11 @@ enum Commands {
         /// Path to the local configuration file
         #[arg(short, long, default_value = ".config")]
         config_file: PathBuf,
+        /// Do not inject ANAXA_* environment variables
+        #[arg(long)]
+        no_env: bool,
         /// Additional arguments to pass to cargo build
-        #[arg(last = true)]
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
 }
@@ -109,7 +112,11 @@ fn main() -> Result<()> {
                 println!("Generated DOT graph in {:?}", out.join("depends.dot"));
             }
         }
-        Commands::Build { config_file, args } => {
+        Commands::Build {
+            config_file,
+            no_env,
+            args,
+        } => {
             let tree = parser::build_config_tree(dir)?;
             let configs = parser::flatten_configs(&tree);
             let values = anaxa_builder::config_io::load_config(config_file, &configs)?;
@@ -139,15 +146,17 @@ fn main() -> Result<()> {
             if !cfgs.is_empty() {
                 cmd.env("RUSTFLAGS", format!("--cfg {}", cfgs.join(" --cfg ")));
             }
-            for (k, v) in values.iter() {
-                let v = match v {
-                    toml::Value::String(s) => s.clone(),
-                    toml::Value::Integer(i) => i.to_string(),
-                    toml::Value::Float(f) => f.to_string(),
-                    toml::Value::Boolean(b) => b.to_string(),
-                    _ => continue,
-                };
-                cmd.env(&format!("ANAXA_{}", k.to_uppercase()), v);
+            if !*no_env {
+                for (k, v) in values.iter() {
+                    let v = match v {
+                        toml::Value::String(s) => s.clone(),
+                        toml::Value::Integer(i) => i.to_string(),
+                        toml::Value::Float(f) => f.to_string(),
+                        toml::Value::Boolean(b) => b.to_string(),
+                        _ => continue,
+                    };
+                    cmd.env(&format!("ANAXA_{}", k.to_uppercase()), v);
+                }
             }
             cmd.args(args);
 

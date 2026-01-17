@@ -1,3 +1,4 @@
+pub mod build_rs;
 pub mod codegen;
 pub mod config_io;
 pub mod evaluator;
