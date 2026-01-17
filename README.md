@@ -1,5 +1,10 @@
 # Anaxa Builder
 
+[![Crates.io](https://img.shields.io/crates/v/anaxa-builder?style=for-the-badge&logo=rust&color=orange)](https://crates.io/crates/anaxa-builder)
+[![Docs.rs](https://img.shields.io/docsrs/anaxa-builder?style=for-the-badge&logo=docs.rs)](https://docs.rs/anaxa-builder)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge&logo=open-source-initiative)](LICENSE)
+[![Rust Version](https://img.shields.io/badge/rust-1.70+-brown?style=for-the-badge&logo=rust)](https://www.rust-lang.org/)
+
 现代化的 Rust 原生配置管理系统，旨在替代传统的 Kconfig，使用 TOML 作为 Schema 定义语言。
 
 ## 特性
