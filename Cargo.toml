@@ -1,7 +1,7 @@
 [package]
 name = "anaxa-builder"
 description = "A modern native Rust configuration management system"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 authors = ["<moyan> <me@moyanjdc.top>"]
 license = "MIT"
