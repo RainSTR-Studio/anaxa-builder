@@ -41,13 +41,18 @@ enum Commands {
         #[arg(long)]
         rust: bool,
 
-        /// Generate Cargo keys
-        #[arg(long)]
-        cargo: bool,
-
         /// Generate DOT dependency graph
         #[arg(long)]
         dot: bool,
+    },
+    /// Wrapper for cargo build with dynamic features from config
+    Build {
+        #[arg(short, long, default_value = ".config")]
+        config_file: PathBuf,
+
+        /// Arguments to pass to cargo build
+        #[arg(last = true)]
+        args: Vec<String>,
     },
 }
 
@@ -84,17 +89,15 @@ fn main() -> Result<()> {
             config_file,
             c,
             rust,
-            cargo,
             dot,
         } => {
             let parsed_config = parser::scan_and_parse(dir)?;
             let values = config_io::load_config(config_file, &parsed_config.items)?;
 
             // If no specific flags are set, generate all
-            let generate_all = !(*c || *rust || *cargo || *dot);
+            let generate_all = !(*c || *rust || *dot);
             let do_c = *c || generate_all;
             let do_rust = *rust || generate_all;
-            let do_cargo = *cargo || generate_all;
             let do_dot = *dot || generate_all;
 
             fs::create_dir_all(out)?;
@@ -121,12 +124,56 @@ fn main() -> Result<()> {
                     Err(e) => eprintln!("Warning: Failed to build graph for DOT generation: {}", e),
                 }
             }
+        }
+        Commands::Build { config_file, args } => {
+            let parsed_config = parser::scan_and_parse(dir)?;
+            let values = config_io::load_config(config_file, &parsed_config.items)?;
 
-            if do_cargo {
-                println!("--- Cargo Instructions (for build.rs) ---");
-                let cargo_content =
-                    codegen::rust::generate_cargo_keys(&parsed_config.items, &values)?;
-                print!("{}", cargo_content);
+            // Build evaluator and populate with values for dependency checking
+            let mut evaluator = anaxa_builder::logic::Evaluator::new();
+            for (name, val) in &values {
+                evaluator.set_variable(name, val)?;
+            }
+
+            let mut features = Vec::new();
+            for item in &parsed_config.items {
+                if let Some(item_features) = &item.feature {
+                    // Only bool items trigger features for now
+                    let is_enabled = if let Some(val) = values.get(&item.name) {
+                        val.as_bool() == Some(true)
+                    } else {
+                        false
+                    };
+
+                    if is_enabled {
+                        // Verify dependencies are met before enabling feature
+                        let deps_met = if let Some(deps) = &item.depends_on {
+                            evaluator.check_dependency(deps)?
+                        } else {
+                            true
+                        };
+
+                        if deps_met {
+                            features.extend(item_features.clone());
+                        }
+                    }
+                }
+            }
+
+            println!("Wrapper: Running cargo build with features: {:?}", features);
+
+            let mut cmd = std::process::Command::new("cargo");
+            cmd.arg("build");
+            if !features.is_empty() {
+                cmd.arg("--features");
+                cmd.arg(features.join(","));
+            }
+            cmd.args(args);
+
+            // Pass through stdin/stdout/stderr
+            let status = cmd.status()?;
+            if !status.success() {
+                std::process::exit(status.code().unwrap_or(1));
             }
         }
     }

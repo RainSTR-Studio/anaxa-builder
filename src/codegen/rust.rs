@@ -1,4 +1,4 @@
-use crate::schema::{ConfigItem, ConfigType};
+use crate::schema::ConfigItem;
 use anyhow::Result;
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -23,31 +23,6 @@ pub fn generate_consts(
                     item.config_type.rust_type(),
                     formatted
                 )?;
-            }
-        }
-    }
-
-    Ok(buffer)
-}
-
-pub fn generate_cargo_keys(
-    items: &[ConfigItem],
-    values: &HashMap<String, toml::Value>,
-) -> Result<String> {
-    let mut buffer = String::new();
-
-    for item in items {
-        if let Some(val) = values.get(&item.name) {
-            match item.config_type {
-                ConfigType::Bool if val.as_bool() == Some(true) => {
-                    writeln!(buffer, "cargo:rustc-cfg={}", item.name)?;
-                }
-                ConfigType::String | ConfigType::Choice => {
-                    if let Some(formatted) = item.config_type.format_value_rust(val) {
-                        writeln!(buffer, "cargo:rustc-cfg={}={}", item.name, formatted)?;
-                    }
-                }
-                _ => {}
             }
         }
     }
