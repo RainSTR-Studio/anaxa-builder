@@ -16,7 +16,7 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/moyanj/anaxa-builder.git
+git clone https://github.com/RainSTR-Studio/anaxa-builder.git
 cd anaxa-builder
 
 # 使用 cargo 安装
@@ -110,7 +110,7 @@ cargo run -- generate
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `name` | String | 是 | 配置项名称 |
-| `type` | ConfigType | 是 | 配置类型 |
+| `type` | ConfigType | 是 | 配置类型 (见上) |
 | `default` | Any | 是 | 默认值 |
 | `desc` | String | 否 | 简短描述 |
 | `help` | String | 否 | 详细帮助信息 |
