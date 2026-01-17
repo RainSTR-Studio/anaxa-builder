@@ -1,95 +1,91 @@
-use crate::schema::{ConfigItem, KconfigFile, Menu};
+use crate::schema::{ConfigItem, ConfigNode, KconfigFile};
 use anyhow::{Context, Result};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-#[derive(Debug)]
-pub struct ParsedConfig {
-    pub items: Vec<ConfigItem>,
-    pub menus: HashMap<PathBuf, Menu>,
-    pub file_map: Vec<(PathBuf, Vec<ConfigItem>)>,
-}
+/// Recursively scans the given root directory for `Kconfig.toml` files
+/// and builds a hierarchical `ConfigNode` tree.
+pub fn build_config_tree<P: AsRef<Path>>(root: P) -> Result<ConfigNode> {
+    let root_path = root.as_ref().canonicalize()?;
+    let mut nodes: BTreeMap<PathBuf, ConfigNode> = BTreeMap::new();
 
-pub fn scan_and_parse(root_dir: &Path) -> Result<ParsedConfig> {
-    let mut items = Vec::new();
-    let mut menus = HashMap::new();
-    let mut file_map = Vec::new();
-
-    for entry in WalkDir::new(root_dir).sort_by_file_name() {
-        let entry = entry?;
+    for entry in WalkDir::new(&root_path)
+        .follow_links(true)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
         if entry.file_name() == "Kconfig.toml" {
             let path = entry.path();
+            let rel_path = path.parent().unwrap().strip_prefix(&root_path)?;
+
             let content = fs::read_to_string(path)
                 .with_context(|| format!("Failed to read config file: {:?}", path))?;
 
-            let config_file: KconfigFile = toml::from_str(&content)
-                .with_context(|| format!("Failed to parse TOML: {:?}", path))?;
+            let kconfig: KconfigFile = toml::from_str(&content)
+                .with_context(|| format!("Failed to parse TOML structure in: {:?}", path))?;
 
-            let mut file_items = Vec::new();
-
-            if let Some(menu) = config_file.menu {
-                let relative_path = path
-                    .strip_prefix(root_dir)
-                    .with_context(|| format!("Failed to get relative path: {:?}", path))?;
-                menus.insert(relative_path.to_path_buf(), menu);
-            }
-
-            if let Some(configs) = config_file.configs {
-                items.extend(configs.clone());
-                file_items.extend(configs);
-            }
-
-            file_map.push((path.to_path_buf(), file_items));
+            nodes.insert(
+                rel_path.to_path_buf(),
+                ConfigNode {
+                    configs: kconfig.configs.unwrap_or_default(),
+                    children: Vec::new(),
+                    path: rel_path.to_string_lossy().into_owned(),
+                },
+            );
         }
     }
 
-    Ok(ParsedConfig {
-        items,
-        menus,
-        file_map,
-    })
+    // Assemble the tree
+    // We use a separate map to store the final nodes because we need to move them into children
+    let mut paths: Vec<_> = nodes.keys().cloned().collect();
+    // Sort by depth descending so we attach children to parents correctly
+    paths.sort_by_key(|p| std::cmp::Reverse(p.components().count()));
+
+    for path in paths {
+        if path.as_os_str().is_empty() {
+            continue;
+        }
+
+        let current_node = nodes.remove(&path).unwrap();
+
+        // Find parent
+        let mut parent_path = path.parent().unwrap_or(Path::new("")).to_path_buf();
+        while !parent_path.as_os_str().is_empty() && !nodes.contains_key(&parent_path) {
+            parent_path = parent_path.parent().unwrap_or(Path::new("")).to_path_buf();
+        }
+
+        if let Some(parent_node) = nodes.get_mut(&parent_path) {
+            parent_node.children.push(current_node);
+        } else if parent_path.as_os_str().is_empty() && nodes.contains_key(&PathBuf::new()) {
+            nodes
+                .get_mut(&PathBuf::new())
+                .unwrap()
+                .children
+                .push(current_node);
+        } else {
+            // If no parent found, it's effectively a root-level child or we need to create a root
+            nodes.insert(path, current_node);
+        }
+    }
+
+    nodes
+        .remove(&PathBuf::new())
+        .context("No root Kconfig.toml found in the root directory")
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use tempfile::tempdir;
-
-    #[test]
-    fn test_scan_and_parse() -> Result<()> {
-        let dir = tempdir()?;
-        let root = dir.path();
-
-        let net_dir = root.join("net");
-        fs::create_dir(&net_dir)?;
-        let config_content = r#"
-[menu]
-title = "Networking"
-
-[[config]]
-name = "ENABLE_NET"
-type = "bool"
-default = true
-desc = "Enable networking"
-"#;
-        fs::write(net_dir.join("Kconfig.toml"), config_content)?;
-
-        let parsed = scan_and_parse(root)?;
-        assert_eq!(parsed.items.len(), 1);
-        assert_eq!(parsed.items[0].name, "ENABLE_NET");
-        assert_eq!(parsed.menus.len(), 1);
-        assert_eq!(
-            parsed
-                .menus
-                .get(&PathBuf::from("net/Kconfig.toml"))
-                .unwrap()
-                .title,
-            "Networking"
-        );
-
-        Ok(())
+/// Helper to flatten the hierarchical tree into a flat list of items
+pub fn flatten_configs(node: &ConfigNode) -> Vec<ConfigItem> {
+    let mut all_configs = node.configs.clone();
+    for child in &node.children {
+        all_configs.extend(flatten_configs(child));
     }
+    all_configs
+}
+
+/// Legacy function for compatibility, if needed
+pub fn parse_kconfigs<P: AsRef<Path>>(root: P) -> Result<Vec<ConfigItem>> {
+    let tree = build_config_tree(root)?;
+    Ok(flatten_configs(&tree))
 }

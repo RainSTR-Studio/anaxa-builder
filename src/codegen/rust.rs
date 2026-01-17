@@ -1,4 +1,4 @@
-use crate::schema::ConfigItem;
+use crate::schema::{ConfigItem, ConfigType};
 use anyhow::Result;
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -28,4 +28,29 @@ pub fn generate_consts(
     }
 
     Ok(buffer)
+}
+
+/// Generates a vector of strings suitable for `--cfg` flags.
+pub fn generate_rust_cfgs(
+    items: &[ConfigItem],
+    values: &HashMap<String, toml::Value>,
+) -> Result<Vec<String>> {
+    let mut cfgs = Vec::new();
+
+    for item in items {
+        if let Some(val) = values.get(&item.name) {
+            match item.config_type {
+                ConfigType::Bool => {
+                    if val.as_bool() == Some(true) {
+                        cfgs.push(item.name.clone());
+                    }
+                }
+                // Int and Hex are not typically used for cfgs in this manner,
+                // but could be added if needed.
+                _ => {}
+            }
+        }
+    }
+
+    Ok(cfgs)
 }

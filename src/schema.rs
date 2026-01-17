@@ -64,7 +64,8 @@ pub struct ConfigItem {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Menu {
     pub title: String,
-    pub visible_if: Option<String>,
+    pub desc: Option<String>,
+    pub depends_on: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,4 +73,12 @@ pub struct KconfigFile {
     pub menu: Option<Menu>,
     #[serde(rename = "config")]
     pub configs: Option<Vec<ConfigItem>>,
+}
+
+/// Represents a node in the configuration hierarchy
+#[derive(Debug, Clone)]
+pub struct ConfigNode {
+    pub configs: Vec<ConfigItem>,
+    pub children: Vec<ConfigNode>,
+    pub path: String,
 }

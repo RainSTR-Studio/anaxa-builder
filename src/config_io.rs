@@ -1,4 +1,4 @@
-use crate::logic;
+use crate::evaluator;
 use crate::schema::ConfigItem;
 use anyhow::{Context, Result};
 use std::collections::HashMap;
@@ -7,7 +7,7 @@ use std::path::Path;
 use toml::{Table, Value};
 
 pub fn load_config(path: &Path, items: &[ConfigItem]) -> Result<HashMap<String, Value>> {
-    let mut values = logic::collect_defaults(items);
+    let mut values = evaluator::collect_defaults(items);
 
     if path.exists() {
         let content = fs::read_to_string(path)
