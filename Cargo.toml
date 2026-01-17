@@ -1,7 +1,9 @@
 [package]
 name = "anaxa-builder"
+description = "A modern native Rust configuration management system"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+authors = ["<moyan> <me@moyanjdc.top>"]
 
 [dependencies]
 anyhow = "1.0.100"
