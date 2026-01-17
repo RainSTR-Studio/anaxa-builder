@@ -19,21 +19,29 @@ use toml::Value;
 
 pub mod ui;
 
+pub struct Editor {
+    pub config: ConfigItem,
+    pub input: String,
+    pub choice_state: ListState,
+}
+
+pub struct UiState {
+    pub current_node_path: Vec<usize>,
+    pub list_state: ListState,
+    pub notification: Option<String>,
+    pub show_quit_confirm: bool,
+    pub editor: Option<Editor>,
+}
+
 pub struct App {
     pub root_node: ConfigNode,
-    pub current_node_path: Vec<usize>,
     pub values: HashMap<String, Value>,
-    pub list_state: ListState,
     pub config_path: PathBuf,
     pub should_quit: bool,
     pub flattened_items: Vec<ConfigItem>,
-    pub input_buffer: String,
-    pub editing_config: Option<ConfigItem>,
-    pub choice_state: ListState,
-    pub notification: Option<String>,
     pub is_dirty: bool,
-    pub show_quit_confirm: bool,
     pub evaluator: crate::evaluator::Evaluator,
+    pub ui: UiState,
 }
 
 impl App {
@@ -50,19 +58,19 @@ impl App {
 
         Ok(Self {
             root_node,
-            current_node_path: Vec::new(),
             values,
-            list_state,
             config_path,
             should_quit: false,
             flattened_items,
-            input_buffer: String::new(),
-            editing_config: None,
-            choice_state: ListState::default(),
-            notification: None,
             is_dirty: false,
-            show_quit_confirm: false,
             evaluator,
+            ui: UiState {
+                current_node_path: Vec::new(),
+                list_state,
+                notification: None,
+                show_quit_confirm: false,
+                editor: None,
+            },
         })
     }
 
@@ -74,7 +82,7 @@ impl App {
 
     pub fn get_current_node(&self) -> &ConfigNode {
         let mut node = &self.root_node;
-        for &index in &self.current_node_path {
+        for &index in &self.ui.current_node_path {
             node = &node.children[index];
         }
         node
@@ -83,7 +91,7 @@ impl App {
     pub fn get_path_string(&self) -> String {
         let mut path = vec![self.root_node.desc.clone()];
         let mut node = &self.root_node;
-        for &index in &self.current_node_path {
+        for &index in &self.ui.current_node_path {
             node = &node.children[index];
             path.push(node.desc.clone());
         }
@@ -126,7 +134,7 @@ impl App {
         if total == 0 {
             return;
         }
-        let i = match self.list_state.selected() {
+        let i = match self.ui.list_state.selected() {
             Some(i) => {
                 if i >= total - 1 {
                     0
@@ -136,7 +144,7 @@ impl App {
             }
             None => 0,
         };
-        self.list_state.select(Some(i));
+        self.ui.list_state.select(Some(i));
     }
 
     pub fn previous(&mut self) {
@@ -145,7 +153,7 @@ impl App {
         if total == 0 {
             return;
         }
-        let i = match self.list_state.selected() {
+        let i = match self.ui.list_state.selected() {
             Some(i) => {
                 if i == 0 {
                     total - 1
@@ -155,11 +163,11 @@ impl App {
             }
             None => 0,
         };
-        self.list_state.select(Some(i));
+        self.ui.list_state.select(Some(i));
     }
 
     pub fn enter(&mut self) {
-        let selected = self.list_state.selected().unwrap_or(0);
+        let selected = self.ui.list_state.selected().unwrap_or(0);
         let (configs, children) = self.get_visible_items();
 
         if selected >= configs.len() {
@@ -172,22 +180,22 @@ impl App {
                     .position(|n| std::ptr::eq(n, *target_node));
 
                 if let Some(idx) = real_index {
-                    self.current_node_path.push(idx);
-                    self.list_state.select(Some(0));
+                    self.ui.current_node_path.push(idx);
+                    self.ui.list_state.select(Some(0));
                 }
             }
         }
     }
 
     pub fn back(&mut self) {
-        if !self.current_node_path.is_empty() {
-            self.current_node_path.pop();
-            self.list_state.select(Some(0));
+        if !self.ui.current_node_path.is_empty() {
+            self.ui.current_node_path.pop();
+            self.ui.list_state.select(Some(0));
         }
     }
 
     pub fn toggle_bool(&mut self) {
-        let selected = self.list_state.selected().unwrap_or(0);
+        let selected = self.ui.list_state.selected().unwrap_or(0);
         let (visible_configs, _) = self.get_visible_items();
 
         let config = if selected < visible_configs.len() {
@@ -212,7 +220,7 @@ impl App {
                 crate::schema::ConfigType::Int
                 | crate::schema::ConfigType::Hex
                 | crate::schema::ConfigType::String => {
-                    self.input_buffer = self
+                    let input = self
                         .values
                         .get(&config.name)
                         .map(|v| match v {
@@ -221,21 +229,30 @@ impl App {
                             _ => String::new(),
                         })
                         .unwrap_or_default();
-                    self.editing_config = Some(config);
+                    self.ui.editor = Some(Editor {
+                        config,
+                        input,
+                        choice_state: ListState::default(),
+                    });
                 }
                 crate::schema::ConfigType::Choice => {
-                    self.editing_config = Some(config);
-                    self.choice_state = ListState::default();
-                    self.choice_state.select(Some(0));
+                    let mut choice_state = ListState::default();
+                    choice_state.select(Some(0));
+                    self.ui.editor = Some(Editor {
+                        config,
+                        input: String::new(),
+                        choice_state,
+                    });
                 }
             }
         }
     }
 
     pub fn submit_choice(&mut self) {
-        if let Some(config) = self.editing_config.take() {
+        if let Some(editor) = self.ui.editor.take() {
+            let config = editor.config;
             if let Some(options) = &config.options {
-                if let Some(selected) = self.choice_state.selected() {
+                if let Some(selected) = editor.choice_state.selected() {
                     if let Some(opt) = options.get(selected) {
                         self.values.insert(config.name, Value::String(opt.clone()));
                         self.is_dirty = true;
@@ -248,9 +265,9 @@ impl App {
     }
 
     pub fn next_choice(&mut self) {
-        if let Some(config) = &self.editing_config {
-            if let Some(options) = &config.options {
-                let i = match self.choice_state.selected() {
+        if let Some(editor) = &mut self.ui.editor {
+            if let Some(options) = &editor.config.options {
+                let i = match editor.choice_state.selected() {
                     Some(i) => {
                         if i >= options.len() - 1 {
                             0
@@ -260,15 +277,15 @@ impl App {
                     }
                     None => 0,
                 };
-                self.choice_state.select(Some(i));
+                editor.choice_state.select(Some(i));
             }
         }
     }
 
     pub fn previous_choice(&mut self) {
-        if let Some(config) = &self.editing_config {
-            if let Some(options) = &config.options {
-                let i = match self.choice_state.selected() {
+        if let Some(editor) = &mut self.ui.editor {
+            if let Some(options) = &editor.config.options {
+                let i = match editor.choice_state.selected() {
                     Some(i) => {
                         if i == 0 {
                             options.len() - 1
@@ -278,23 +295,24 @@ impl App {
                     }
                     None => 0,
                 };
-                self.choice_state.select(Some(i));
+                editor.choice_state.select(Some(i));
             }
         }
     }
 
     pub fn notify(&mut self, message: String) {
-        self.notification = Some(message);
+        self.ui.notification = Some(message);
     }
 
     pub fn clear_notification(&mut self) {
-        self.notification = None;
+        self.ui.notification = None;
     }
 
     pub fn submit_input(&mut self) {
-        if let Some(config) = self.editing_config.take() {
+        if let Some(editor) = self.ui.editor.take() {
+            let config = editor.config;
             let value = match config.config_type {
-                crate::schema::ConfigType::Int => match self.input_buffer.parse::<i64>() {
+                crate::schema::ConfigType::Int => match editor.input.parse::<i64>() {
                     Ok(i) => Some(Value::Integer(i)),
                     Err(_) => {
                         self.notify("Invalid integer".to_string());
@@ -302,12 +320,10 @@ impl App {
                     }
                 },
                 crate::schema::ConfigType::Hex => {
-                    let res = if self.input_buffer.starts_with("0x")
-                        || self.input_buffer.starts_with("0X")
-                    {
-                        i64::from_str_radix(&self.input_buffer[2..], 16)
+                    let res = if editor.input.starts_with("0x") || editor.input.starts_with("0X") {
+                        i64::from_str_radix(&editor.input[2..], 16)
                     } else {
-                        i64::from_str_radix(&self.input_buffer, 16)
+                        i64::from_str_radix(&editor.input, 16)
                     };
                     match res {
                         Ok(i) => Some(Value::Integer(i)),
@@ -317,7 +333,7 @@ impl App {
                         }
                     }
                 }
-                crate::schema::ConfigType::String => Some(Value::String(self.input_buffer.clone())),
+                crate::schema::ConfigType::String => Some(Value::String(editor.input.clone())),
                 _ => None,
             };
 
@@ -327,13 +343,11 @@ impl App {
                 self.update_evaluator();
                 self.notify("Value updated".to_string());
             }
-            self.input_buffer.clear();
         }
     }
 
     pub fn cancel_input(&mut self) {
-        self.editing_config = None;
-        self.input_buffer.clear();
+        self.ui.editor = None;
     }
 
     pub fn save(&mut self) -> Result<()> {
@@ -341,6 +355,103 @@ impl App {
         self.is_dirty = false;
         self.notify(format!("Config saved to {:?}", self.config_path));
         Ok(())
+    }
+
+    pub fn handle_event(&mut self, event: Event) -> io::Result<bool> {
+        if let Event::Key(key) = event {
+            return self.handle_key_event(key);
+        }
+        Ok(false)
+    }
+
+    fn handle_key_event(&mut self, key: event::KeyEvent) -> io::Result<bool> {
+        if self.ui.notification.is_some() {
+            self.clear_notification();
+            return Ok(false);
+        }
+
+        if self.ui.show_quit_confirm {
+            return self.handle_quit_confirm(key);
+        }
+
+        if self.ui.editor.is_some() {
+            self.handle_editing_key(key);
+        } else {
+            return self.handle_main_key(key);
+        }
+        Ok(false)
+    }
+
+    fn handle_quit_confirm(&mut self, key: event::KeyEvent) -> io::Result<bool> {
+        match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                let _ = self.save();
+                Ok(true)
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') => Ok(true),
+            KeyCode::Esc => {
+                self.ui.show_quit_confirm = false;
+                Ok(false)
+            }
+            _ => Ok(false),
+        }
+    }
+
+    fn handle_editing_key(&mut self, key: event::KeyEvent) {
+        let is_choice = self
+            .ui
+            .editor
+            .as_ref()
+            .map(|e| e.config.config_type == crate::schema::ConfigType::Choice)
+            .unwrap_or(false);
+
+        if is_choice {
+            match key.code {
+                KeyCode::Enter => self.submit_choice(),
+                KeyCode::Esc => self.cancel_input(),
+                KeyCode::Down | KeyCode::Char('j') => self.next_choice(),
+                KeyCode::Up | KeyCode::Char('k') => self.previous_choice(),
+                _ => {}
+            }
+        } else {
+            match key.code {
+                KeyCode::Enter => self.submit_input(),
+                KeyCode::Esc => self.cancel_input(),
+                KeyCode::Backspace => {
+                    if let Some(editor) = &mut self.ui.editor {
+                        editor.input.pop();
+                    }
+                }
+                KeyCode::Char(c) => {
+                    if let Some(editor) = &mut self.ui.editor {
+                        editor.input.push(c);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn handle_main_key(&mut self, key: event::KeyEvent) -> io::Result<bool> {
+        match key.code {
+            KeyCode::Char('q') => {
+                if self.is_dirty {
+                    self.ui.show_quit_confirm = true;
+                } else {
+                    return Ok(true);
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => self.next(),
+            KeyCode::Up | KeyCode::Char('k') => self.previous(),
+            KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => self.enter(),
+            KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') => self.back(),
+            KeyCode::Char(' ') | KeyCode::Char('y') | KeyCode::Char('i') => self.toggle_bool(),
+            KeyCode::Char('s') => {
+                let _ = self.save();
+            }
+            _ => {}
+        }
+        Ok(false)
     }
 }
 
@@ -373,71 +484,68 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
     loop {
         terminal.draw(|f| ui::draw(f, &mut app))?;
 
-        if let Event::Key(key) = event::read()? {
-            if app.notification.is_some() {
-                app.clear_notification();
-                continue;
-            }
-
-            if app.show_quit_confirm {
-                match key.code {
-                    KeyCode::Char('y') | KeyCode::Char('Y') => {
-                        let _ = app.save();
-                        return Ok(());
-                    }
-                    KeyCode::Char('n') | KeyCode::Char('N') => return Ok(()),
-                    KeyCode::Esc => {
-                        app.show_quit_confirm = false;
-                    }
-                    _ => {}
-                }
-                continue;
-            }
-
-            if let Some(config) = &app.editing_config {
-                if config.config_type == crate::schema::ConfigType::Choice {
-                    match key.code {
-                        KeyCode::Enter => app.submit_choice(),
-                        KeyCode::Esc => app.cancel_input(),
-                        KeyCode::Down | KeyCode::Char('j') => app.next_choice(),
-                        KeyCode::Up | KeyCode::Char('k') => app.previous_choice(),
-                        _ => {}
-                    }
-                } else {
-                    match key.code {
-                        KeyCode::Enter => app.submit_input(),
-                        KeyCode::Esc => app.cancel_input(),
-                        KeyCode::Backspace => {
-                            app.input_buffer.pop();
-                        }
-                        KeyCode::Char(c) => {
-                            app.input_buffer.push(c);
-                        }
-                        _ => {}
-                    }
-                }
-            } else {
-                match key.code {
-                    KeyCode::Char('q') => {
-                        if app.is_dirty {
-                            app.show_quit_confirm = true;
-                        } else {
-                            return Ok(());
-                        }
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => app.next(),
-                    KeyCode::Up | KeyCode::Char('k') => app.previous(),
-                    KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => app.enter(),
-                    KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') => app.back(),
-                    KeyCode::Char(' ') | KeyCode::Char('y') | KeyCode::Char('i') => {
-                        app.toggle_bool()
-                    }
-                    KeyCode::Char('s') => {
-                        let _ = app.save();
-                    }
-                    _ => {}
-                }
-            }
+        if app.handle_event(event::read()?)? {
+            return Ok(());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::schema::{ConfigItem, ConfigNode, ConfigType};
+    use std::path::PathBuf;
+
+    fn mock_app() -> App {
+        let root = ConfigNode {
+            desc: "Root".to_string(),
+            configs: vec![ConfigItem {
+                name: "cfg1".to_string(),
+                config_type: ConfigType::Bool,
+                default: Some(toml::Value::Boolean(false)),
+                desc: "Desc 1".to_string(),
+                depends_on: None,
+                help: None,
+                options: None,
+                feature: None,
+            }],
+            children: vec![ConfigNode {
+                desc: "Child".to_string(),
+                configs: vec![],
+                children: vec![],
+                path: "root.child".to_string(),
+                depends_on: None,
+            }],
+            path: "root".to_string(),
+            depends_on: None,
+        };
+        App::new(root, PathBuf::from("dummy.toml")).unwrap()
+    }
+
+    #[test]
+    fn test_navigation_next_prev() {
+        let mut app = mock_app();
+        app.ui.list_state.select(Some(0));
+
+        // 1 config + 1 child = 2 items
+        app.next();
+        assert_eq!(app.ui.list_state.selected(), Some(1));
+        app.next();
+        assert_eq!(app.ui.list_state.selected(), Some(0)); // Wrap
+
+        app.previous();
+        assert_eq!(app.ui.list_state.selected(), Some(1)); // Wrap back
+    }
+
+    #[test]
+    fn test_navigation_enter_back() {
+        let mut app = mock_app();
+        app.ui.list_state.select(Some(1)); // Select "Child"
+        app.enter();
+        assert_eq!(app.ui.current_node_path.len(), 1);
+        assert_eq!(app.ui.list_state.selected(), Some(0));
+
+        app.back();
+        assert_eq!(app.ui.current_node_path.len(), 0);
     }
 }
