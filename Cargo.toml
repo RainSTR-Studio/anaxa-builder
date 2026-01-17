@@ -4,6 +4,15 @@ description = "A modern native Rust configuration management system"
 version = "0.1.0"
 edition = "2021"
 authors = ["<moyan> <me@moyanjdc.top>"]
+license = "MIT"
+repository = "https://github.com/RainSTR-Studio/anaxa-builder"
+categories = [
+    "command-line-utilities",
+    "development-tools",
+    "config",
+    "development-tools::cargo-plugins",
+    "development-tools::build-utils",
+]
 
 [dependencies]
 anyhow = "1.0.100"
