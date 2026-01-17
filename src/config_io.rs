@@ -25,6 +25,14 @@ pub fn load_config(path: &Path, items: &[ConfigItem]) -> Result<HashMap<String, 
                 values.insert(key, val);
             }
         }
+    } else {
+        // 生成默认配置文件
+        for item in items {
+            if item.default.is_some() {
+                values.insert(item.name.clone(), item.default.clone().unwrap());
+            }
+        }
+        save_config(path, &values)?;
     }
 
     Ok(values)

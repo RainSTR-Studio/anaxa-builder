@@ -180,7 +180,11 @@ fn main() -> Result<()> {
                 cmd.arg(features.join(","));
             }
             if !cfgs.is_empty() {
-                cmd.env("RUSTFLAGS", format!("--cfg {}", cfgs.join(" --cfg ")));
+                let raw_rustflags = std::env::var("RUSTFLAGS").unwrap_or_default();
+                cmd.env(
+                    "RUSTFLAGS",
+                    format!("{} --cfg {}", raw_rustflags, cfgs.join(" --cfg ")),
+                );
             }
             if !*no_env {
                 for (k, v) in values.iter() {
