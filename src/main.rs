@@ -58,12 +58,14 @@ enum Commands {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
+    /// Generate clean config
     Savedefconfig {
         #[arg(short, long)]
         out: PathBuf,
         #[arg(short, long, default_value = ".config")]
         config_file: PathBuf,
     },
+    /// Generate config from defconfig
     Defconfig {
         #[arg(short, long)]
         file: PathBuf,
@@ -175,7 +177,7 @@ fn main() -> Result<()> {
                         toml::Value::Boolean(b) => b.to_string(),
                         _ => continue,
                     };
-                    cmd.env(&format!("ANAXA_{}", k.to_uppercase()), v);
+                    cmd.env(format!("ANAXA_{}", k.to_uppercase()), v);
                 }
             }
             cmd.args(args);

@@ -39,15 +39,8 @@ pub fn generate_rust_cfgs(
 
     for item in items {
         if let Some(val) = values.get(&item.name) {
-            match item.config_type {
-                ConfigType::Bool => {
-                    if val.as_bool() == Some(true) {
-                        cfgs.push(item.name.clone());
-                    }
-                }
-                // Int and Hex are not typically used for cfgs in this manner,
-                // but could be added if needed.
-                _ => {}
+            if item.config_type == ConfigType::Bool && val.as_bool() == Some(true) {
+                cfgs.push(item.name.clone());
             }
         }
     }
