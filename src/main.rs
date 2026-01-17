@@ -57,6 +57,18 @@ enum Commands {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
+    Savedefconfig {
+        #[arg(short, long)]
+        out: PathBuf,
+        #[arg(short, long, default_value = ".config")]
+        config_file: PathBuf,
+    },
+    Defconfig {
+        #[arg(short, long)]
+        file: PathBuf,
+        #[arg(short, long, default_value = ".config")]
+        config_file: PathBuf,
+    },
 }
 
 fn main() -> Result<()> {
@@ -165,6 +177,21 @@ fn main() -> Result<()> {
             if !status.success() {
                 std::process::exit(status.code().unwrap_or(1));
             }
+        }
+        Commands::Savedefconfig { out, config_file } => {
+            let tree = parser::build_config_tree(dir)?;
+            let configs = parser::flatten_configs(&tree);
+            let values = anaxa_builder::config_io::load_config(config_file, &configs)?;
+            let minimal = anaxa_builder::config_io::get_minimal_config(&values, &configs);
+            anaxa_builder::config_io::save_config(out, &minimal)?;
+            println!("Saved minimal defconfig to {:?}", out);
+        }
+        Commands::Defconfig { file, config_file } => {
+            let tree = parser::build_config_tree(dir)?;
+            let configs = parser::flatten_configs(&tree);
+            let values = anaxa_builder::config_io::load_config(file, &configs)?;
+            anaxa_builder::config_io::save_config(config_file, &values)?;
+            println!("Updated configuration from {:?} to {:?}", file, config_file);
         }
     }
     Ok(())

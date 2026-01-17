@@ -38,3 +38,66 @@ pub fn save_config(path: &Path, values: &HashMap<String, Value>) -> Result<()> {
 
     Ok(())
 }
+
+pub fn get_minimal_config(
+    current_values: &HashMap<String, Value>,
+    items: &[ConfigItem],
+) -> HashMap<String, Value> {
+    let defaults = evaluator::collect_defaults(items);
+    let mut minimal = HashMap::new();
+
+    for (name, value) in current_values {
+        if let Some(default_val) = defaults.get(name) {
+            if value != default_val {
+                minimal.insert(name.clone(), value.clone());
+            }
+        } else {
+            minimal.insert(name.clone(), value.clone());
+        }
+    }
+
+    minimal
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::schema::{ConfigItem, ConfigType};
+    use toml::Value;
+
+    #[test]
+    fn test_get_minimal_config() {
+        let items = vec![
+            ConfigItem {
+                name: "A".to_string(),
+                config_type: ConfigType::Bool,
+                default: Some(Value::Boolean(true)),
+                desc: "A".to_string(),
+                depends_on: None,
+                help: None,
+                options: None,
+                feature: None,
+            },
+            ConfigItem {
+                name: "B".to_string(),
+                config_type: ConfigType::Int,
+                default: Some(Value::Integer(10)),
+                desc: "B".to_string(),
+                depends_on: None,
+                help: None,
+                options: None,
+                feature: None,
+            },
+        ];
+
+        let mut current = HashMap::new();
+        current.insert("A".to_string(), Value::Boolean(false));
+        current.insert("B".to_string(), Value::Integer(10));
+
+        let minimal = get_minimal_config(&current, &items);
+
+        assert_eq!(minimal.len(), 1);
+        assert_eq!(minimal.get("A"), Some(&Value::Boolean(false)));
+        assert_eq!(minimal.get("B"), None);
+    }
+}
