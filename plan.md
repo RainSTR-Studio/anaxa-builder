@@ -60,17 +60,7 @@ desc = "Maximum number of open sockets"
 
 ```
 
-### Phase 2: TUI 交互界面 (The "View")
-目标：实现 `cargo menuconfig`。
 
-*   **库选择**: **Cursive** (因其处理表单和复杂交互逻辑优于 Ratatui)。
-*   **功能实现**:
-    *   **Tree View**: 左侧或层级式导航菜单。
-    *   **Dynamic Visibility**: 根据 `depends_on` 实时隐藏/显示或禁用选项。
-    *   **Choice 渲染**: 使用 Radio Button Group 渲染 `choice` 类型（单选组）。
-    *   **Search**: 按 `/` 键搜索配置项名称或描述。
-    *   **Help**: 按 `?` 键显示详细帮助信息。
-    *   **Save/Load**: 将最终配置序列化为 `.config` (TOML格式) 文件。
 
 ### Phase 3: Cargo 集成与代码生成 (The "Controller")
 目标：让配置在编译时生效。
@@ -106,7 +96,6 @@ desc = "Maximum number of open sockets"
 ## 3. 技术栈推荐
 
 *   **CLI 框架**: `clap`
-*   **TUI 库**: `cursive` (配合 `cursive_tree_view`)
 *   **序列化**: `serde`, `toml`
 *   **表达式解析**: `evalexpr` (用于解析 `depends_on = "A && B"`)
 *   **图算法**: `petgraph` (构建依赖图、循环检测)

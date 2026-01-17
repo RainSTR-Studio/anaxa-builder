@@ -62,8 +62,9 @@ fn main() -> Result<()> {
             let tree = parser::build_config_tree(dir)?;
             println!("{:#?}", tree);
         }
-        Commands::Menuconfig { config: _ } => {
-            println!("TUI not yet implemented in this session.");
+        Commands::Menuconfig { config } => {
+            let tree = parser::build_config_tree(dir)?;
+            anaxa_builder::tui::run(tree, config.clone())?;
         }
         Commands::Generate { .. } => {
             println!("Generator not yet fully integrated.");

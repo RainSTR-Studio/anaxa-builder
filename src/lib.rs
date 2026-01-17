@@ -4,3 +4,4 @@ pub mod evaluator;
 pub mod graph;
 pub mod parser;
 pub mod schema;
+pub mod tui;

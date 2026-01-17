@@ -26,12 +26,19 @@ pub fn build_config_tree<P: AsRef<Path>>(root: P) -> Result<ConfigNode> {
             let kconfig: KconfigFile = toml::from_str(&content)
                 .with_context(|| format!("Failed to parse TOML structure in: {:?}", path))?;
 
+            let desc = kconfig
+                .title
+                .clone()
+                .unwrap_or_else(|| rel_path.to_string_lossy().into_owned());
+
             nodes.insert(
                 rel_path.to_path_buf(),
                 ConfigNode {
+                    desc,
                     configs: kconfig.configs.unwrap_or_default(),
                     children: Vec::new(),
                     path: rel_path.to_string_lossy().into_owned(),
+                    depends_on: kconfig.depends_on.clone(),
                 },
             );
         }
