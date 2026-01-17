@@ -96,3 +96,94 @@ pub fn parse_kconfigs<P: AsRef<Path>>(root: P) -> Result<Vec<ConfigItem>> {
     let tree = build_config_tree(root)?;
     Ok(flatten_configs(&tree))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::schema::ConfigType;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_flatten_configs() {
+        let item1 = ConfigItem {
+            name: "A".to_string(),
+            config_type: ConfigType::Bool,
+            default: None,
+            desc: "A".to_string(),
+            depends_on: None,
+            help: None,
+            options: None,
+            feature: None,
+        };
+        let item2 = ConfigItem {
+            name: "B".to_string(),
+            config_type: ConfigType::Bool,
+            default: None,
+            desc: "B".to_string(),
+            depends_on: None,
+            help: None,
+            options: None,
+            feature: None,
+        };
+
+        let root = ConfigNode {
+            desc: "root".to_string(),
+            configs: vec![item1.clone()],
+            children: vec![ConfigNode {
+                desc: "child".to_string(),
+                configs: vec![item2.clone()],
+                children: Vec::new(),
+                path: "child".to_string(),
+                depends_on: None,
+            }],
+            path: "".to_string(),
+            depends_on: None,
+        };
+
+        let flattened = flatten_configs(&root);
+        assert_eq!(flattened.len(), 2);
+        assert_eq!(flattened[0].name, "A");
+        assert_eq!(flattened[1].name, "B");
+    }
+
+    #[test]
+    fn test_build_config_tree() -> Result<()> {
+        let dir = tempdir()?;
+        let root_path = dir.path();
+
+        let root_kconfig = r#"
+            title = "Root"
+            [[config]]
+            name = "ROOT_OPT"
+            type = "bool"
+            default = true
+            desc = "Root option"
+        "#;
+        fs::write(root_path.join("Kconfig.toml"), root_kconfig)?;
+
+        let sub_path = root_path.join("sub");
+        fs::create_dir(&sub_path)?;
+        let sub_kconfig = r#"
+            title = "Sub"
+            [[config]]
+            name = "SUB_OPT"
+            type = "bool"
+            default = false
+            desc = "Sub option"
+        "#;
+        fs::write(sub_path.join("Kconfig.toml"), sub_kconfig)?;
+
+        let tree = build_config_tree(root_path)?;
+
+        assert_eq!(tree.desc, "Root");
+        assert_eq!(tree.configs.len(), 1);
+        assert_eq!(tree.configs[0].name, "ROOT_OPT");
+        assert_eq!(tree.children.len(), 1);
+        assert_eq!(tree.children[0].desc, "Sub");
+        assert_eq!(tree.children[0].configs.len(), 1);
+        assert_eq!(tree.children[0].configs[0].name, "SUB_OPT");
+
+        Ok(())
+    }
+}

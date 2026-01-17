@@ -61,6 +61,48 @@ pub struct ConfigItem {
     pub feature: Option<Vec<String>>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use toml::Value;
+
+    #[test]
+    fn test_config_type_format_c() {
+        assert_eq!(
+            ConfigType::Bool.format_value_c(&Value::Boolean(true)),
+            Some("1".to_string())
+        );
+        assert_eq!(
+            ConfigType::Int.format_value_c(&Value::Integer(42)),
+            Some("42".to_string())
+        );
+        assert_eq!(
+            ConfigType::Hex.format_value_c(&Value::Integer(255)),
+            Some("0xff".to_string())
+        );
+        assert_eq!(
+            ConfigType::String.format_value_c(&Value::String("hi".to_string())),
+            Some("\"hi\"".to_string())
+        );
+    }
+
+    #[test]
+    fn test_config_type_format_rust() {
+        assert_eq!(
+            ConfigType::Bool.format_value_rust(&Value::Boolean(true)),
+            Some("true".to_string())
+        );
+        assert_eq!(
+            ConfigType::Int.format_value_rust(&Value::Integer(42)),
+            Some("42".to_string())
+        );
+        assert_eq!(
+            ConfigType::String.format_value_rust(&Value::String("hi".to_string())),
+            Some("\"hi\"".to_string())
+        );
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Menu {
     pub title: String,

@@ -33,3 +33,44 @@ fn write_item_define(buffer: &mut String, item: &ConfigItem, val: &toml::Value) 
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::schema::ConfigType;
+
+    #[test]
+    fn test_generate_c() -> Result<()> {
+        let items = vec![
+            ConfigItem {
+                name: "ENABLE_A".to_string(),
+                config_type: ConfigType::Bool,
+                default: None,
+                desc: "A".to_string(),
+                depends_on: None,
+                help: None,
+                options: None,
+                feature: None,
+            },
+            ConfigItem {
+                name: "MAX_B".to_string(),
+                config_type: ConfigType::Int,
+                default: None,
+                desc: "B".to_string(),
+                depends_on: None,
+                help: None,
+                options: None,
+                feature: None,
+            },
+        ];
+
+        let mut values = HashMap::new();
+        values.insert("ENABLE_A".to_string(), toml::Value::Boolean(true));
+        values.insert("MAX_B".to_string(), toml::Value::Integer(42));
+
+        let code = generate(&items, &values)?;
+        assert!(code.contains("#define CONFIG_ENABLE_A 1"));
+        assert!(code.contains("#define CONFIG_MAX_B 42"));
+        Ok(())
+    }
+}

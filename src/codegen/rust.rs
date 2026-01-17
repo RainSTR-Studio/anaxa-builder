@@ -47,3 +47,68 @@ pub fn generate_rust_cfgs(
 
     Ok(cfgs)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::schema::ConfigType;
+
+    #[test]
+    fn test_generate_rust_consts() -> Result<()> {
+        let items = vec![
+            ConfigItem {
+                name: "ENABLE_A".to_string(),
+                config_type: ConfigType::Bool,
+                default: None,
+                desc: "A".to_string(),
+                depends_on: None,
+                help: None,
+                options: None,
+                feature: None,
+            },
+            ConfigItem {
+                name: "STR_VAL".to_string(),
+                config_type: ConfigType::String,
+                default: None,
+                desc: "S".to_string(),
+                depends_on: None,
+                help: None,
+                options: None,
+                feature: None,
+            },
+        ];
+
+        let mut values = HashMap::new();
+        values.insert("ENABLE_A".to_string(), toml::Value::Boolean(true));
+        values.insert(
+            "STR_VAL".to_string(),
+            toml::Value::String("hello".to_string()),
+        );
+
+        let code = generate_consts(&items, &values)?;
+        assert!(code.contains("pub const ENABLE_A: bool = true;"));
+        assert!(code.contains("pub const STR_VAL: &str = \"hello\";"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_generate_rust_cfgs() -> Result<()> {
+        let items = vec![ConfigItem {
+            name: "ENABLE_A".to_string(),
+            config_type: ConfigType::Bool,
+            default: None,
+            desc: "A".to_string(),
+            depends_on: None,
+            help: None,
+            options: None,
+            feature: None,
+        }];
+
+        let mut values = HashMap::new();
+        values.insert("ENABLE_A".to_string(), toml::Value::Boolean(true));
+
+        let cfgs = generate_rust_cfgs(&items, &values)?;
+        assert_eq!(cfgs, vec!["ENABLE_A".to_string()]);
+        Ok(())
+    }
+}

@@ -100,4 +100,30 @@ mod tests {
         assert_eq!(minimal.get("A"), Some(&Value::Boolean(false)));
         assert_eq!(minimal.get("B"), None);
     }
+
+    #[test]
+    fn test_load_save_config() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let config_path = dir.path().join(".config");
+
+        let items = vec![ConfigItem {
+            name: "ENABLE_A".to_string(),
+            config_type: ConfigType::Bool,
+            default: Some(Value::Boolean(true)),
+            desc: "A".to_string(),
+            depends_on: None,
+            help: None,
+            options: None,
+            feature: None,
+        }];
+
+        let mut values = HashMap::new();
+        values.insert("ENABLE_A".to_string(), Value::Boolean(false));
+
+        save_config(&config_path, &values)?;
+        let loaded = load_config(&config_path, &items)?;
+
+        assert_eq!(loaded.get("ENABLE_A"), Some(&Value::Boolean(false)));
+        Ok(())
+    }
 }
