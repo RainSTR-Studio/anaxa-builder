@@ -90,6 +90,20 @@ fn main() -> Result<()> {
             let tree = parser::build_config_tree(dir)?;
             let configs = parser::flatten_configs(&tree);
             graph::ConfigGraph::build(&configs)?;
+
+            for item in &configs {
+                if let Some(default_val) = &item.default {
+                    if let Err(e) = item.validate(default_val) {
+                        anyhow::bail!("Invalid default value for config '{}': {}", item.name, e);
+                    }
+                }
+                if item.config_type == anaxa_builder::schema::ConfigType::Choice
+                    && (item.options.is_none() || item.options.as_ref().unwrap().is_empty())
+                {
+                    anyhow::bail!("Config '{}' is a choice but has no options", item.name);
+                }
+            }
+
             println!("Configuration valid ({} items, no cycles).", configs.len());
         }
         Commands::Dump => {

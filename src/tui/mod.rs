@@ -338,10 +338,17 @@ impl App {
             };
 
             if let Some(val) = value {
-                self.values.insert(config.name, val);
-                self.is_dirty = true;
-                self.update_evaluator();
-                self.notify("Value updated".to_string());
+                match config.validate(&val) {
+                    Ok(_) => {
+                        self.values.insert(config.name, val);
+                        self.is_dirty = true;
+                        self.update_evaluator();
+                        self.notify("Value updated".to_string());
+                    }
+                    Err(e) => {
+                        self.notify(format!("Error: {}", e));
+                    }
+                }
             }
         }
     }
@@ -508,6 +515,8 @@ mod tests {
                 help: None,
                 options: None,
                 feature: None,
+                range: None,
+                regex: None,
             }],
             children: vec![ConfigNode {
                 desc: "Child".to_string(),

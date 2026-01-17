@@ -115,6 +115,8 @@ mod tests {
             help: None,
             options: None,
             feature: None,
+            range: None,
+            regex: None,
         };
         let item2 = ConfigItem {
             name: "B".to_string(),
@@ -125,6 +127,8 @@ mod tests {
             help: None,
             options: None,
             feature: None,
+            range: None,
+            regex: None,
         };
 
         let root = ConfigNode {

@@ -65,6 +65,8 @@ mod tests {
                 help: None,
                 options: None,
                 feature: None,
+                range: None,
+                regex: None,
             },
             ConfigItem {
                 name: "STR_VAL".to_string(),
@@ -75,6 +77,8 @@ mod tests {
                 help: None,
                 options: None,
                 feature: None,
+                range: None,
+                regex: None,
             },
         ];
 
@@ -102,6 +106,8 @@ mod tests {
             help: None,
             options: None,
             feature: None,
+            range: None,
+            regex: None,
         }];
 
         let mut values = HashMap::new();

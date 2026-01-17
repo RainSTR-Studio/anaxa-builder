@@ -74,6 +74,8 @@ mod tests {
             help: None,
             options: None,
             feature: None,
+            range: None,
+            regex: None,
         }
     }
 

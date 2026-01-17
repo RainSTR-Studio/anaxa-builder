@@ -5,6 +5,69 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Helper for `build.rs` to integrate Anaxa configuration.
+pub struct BuildHelper {
+    kconfig_dir: PathBuf,
+    config_file: PathBuf,
+    out_dir: PathBuf,
+}
+
+impl BuildHelper {
+    pub fn new() -> Result<Self> {
+        let out_dir = env::var_os("OUT_DIR").context("OUT_DIR not set")?.into();
+        Ok(Self {
+            kconfig_dir: PathBuf::from("src"),
+            config_file: PathBuf::from(".config"),
+            out_dir,
+        })
+    }
+
+    pub fn with_kconfig_dir<P: Into<PathBuf>>(mut self, dir: P) -> Self {
+        self.kconfig_dir = dir.into();
+        self
+    }
+
+    pub fn with_config_file<P: Into<PathBuf>>(mut self, file: P) -> Self {
+        self.config_file = file.into();
+        self
+    }
+
+    pub fn build(self) -> Result<()> {
+        let tree = parser::build_config_tree(&self.kconfig_dir)?;
+        let configs = parser::flatten_configs(&tree);
+        let values = config_io::load_config(&self.config_file, &configs)?;
+
+        let out_path = self.out_dir.join("config.rs");
+        let rust_code = codegen::rust::generate_consts(&configs, &values)?;
+        fs::write(&out_path, rust_code)
+            .with_context(|| format!("Failed to write to {:?}", out_path))?;
+
+        println!("cargo:rerun-if-changed={}", self.config_file.display());
+        emit_rerun_if_changed(&self.kconfig_dir)?;
+
+        for item in &configs {
+            if let Some(val) = values.get(&item.name) {
+                if val.as_bool() == Some(true) {
+                    println!("cargo:rustc-cfg={}", item.name);
+                }
+            }
+        }
+
+        for (k, v) in values {
+            let v_str = match v {
+                toml::Value::String(s) => s,
+                toml::Value::Integer(i) => i.to_string(),
+                toml::Value::Float(f) => f.to_string(),
+                toml::Value::Boolean(b) => b.to_string(),
+                _ => continue,
+            };
+            println!("cargo:rustc-env=ANAXA_{}={}", k.to_uppercase(), v_str);
+        }
+
+        Ok(())
+    }
+}
+
+/// Helper for `build.rs` to integrate Anaxa configuration.
 ///
 /// This function:
 /// 1. Scans `kconfig_dir` for `Kconfig.toml` files.

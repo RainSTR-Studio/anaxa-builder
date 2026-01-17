@@ -8,9 +8,10 @@
 - 🖥️ **交互式 TUI**: 终端用户界面，提供直观的配置体验
 - 🔍 **依赖管理**: 自动解析 `depends_on` 依赖关系，构建依赖图并进行循环检测
 - 🎯 **类型安全**: 支持 `bool`、`int`、`string`、`hex`、`choice` 等多种配置类型
+- 🛡️ **静态校验**: 支持数值范围限制 (`range`) 和正则表达式匹配 (`regex`)
 - 🔧 **代码生成**: 自动生成 C 头文件、Rust 常量和 Cargo CFG keys
+- 🏗️ **构建系统集成**: 提供 `BuildHelper` Fluent API，轻松集成到 `build.rs`
 - 🌳 **递归扫描**: 自动发现并聚合 `src/` 目录下所有子目录的配置文件
-- ⚡ **优先级控制**: 环境变量 > `.config` 文件 > Schema 默认值
 
 ## 安装
 
@@ -52,7 +53,15 @@ name = "MAX_SOCKETS"
 type = "int"
 default = 16
 depends_on = "ENABLE_NET"
+range = [1, 1024]
 desc = "Maximum number of open sockets"
+
+[[config]]
+name = "DEVICE_NAME"
+type = "string"
+default = "anaxa-node"
+regex = "^[a-z0-9-]+$"
+desc = "Device identification name"
 ```
 
 ### 2. 验证配置
@@ -94,6 +103,26 @@ cargo run -- generate
 - `generated/config.rs` - Rust 常量
 - `generated/depends.dot` - 依赖关系图（可选）
 
+### 5. 在 build.rs 中集成
+
+在你的 `build.rs` 中添加以下代码，即可实现配置自动生成和环境变量注入：
+
+```rust
+fn main() -> anyhow::Result<()> {
+    anaxa_builder::BuildHelper::new()?
+        .with_kconfig_dir("src")     // Schema 扫描目录
+        .with_config_file(".config")  // 配置文件路径
+        .build()?;
+    Ok(())
+}
+```
+
+这会自动：
+- 生成 `config.rs` 到 `OUT_DIR`
+- 设置 `cargo:rustc-cfg` 标志
+- 注入 `ANAXA_` 前缀的环境变量
+- 自动处理 `rerun-if-changed` 逻辑
+
 ## 配置类型
 
 | 类型 | 说明 | 示例 |
@@ -116,6 +145,8 @@ cargo run -- generate
 | `depends_on` | String | 否 | 依赖表达式 |
 | `feature` | Vec<String> | 否 | 对应的 Cargo features |
 | `options` | Vec<String> | 否 | choice 类型的可选值 |
+| `range` | [i64, i64] | 否 | 整数取值范围 |
+| `regex` | String | 否 | 字符串正则表达式约束 |
 
 ## 依赖表达式
 

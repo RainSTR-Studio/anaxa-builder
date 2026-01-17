@@ -146,7 +146,27 @@ fn draw_input_popup(f: &mut Frame, app: &App) {
                 editor.config.name, editor.config.config_type
             ));
 
-        let text = Paragraph::new(editor.input.as_str())
+        let mut lines = vec![Line::from(editor.input.as_str()), Line::from("")];
+
+        if let Some((min, max)) = editor.config.range {
+            lines.push(Line::from(Span::styled(
+                format!("Range: [{}, {}]", min, max),
+                Style::default()
+                    .fg(Color::Gray)
+                    .add_modifier(Modifier::ITALIC),
+            )));
+        }
+
+        if let Some(regex) = &editor.config.regex {
+            lines.push(Line::from(Span::styled(
+                format!("Regex: {}", regex),
+                Style::default()
+                    .fg(Color::Gray)
+                    .add_modifier(Modifier::ITALIC),
+            )));
+        }
+
+        let text = Paragraph::new(lines)
             .block(block)
             .style(Style::default().fg(Color::Yellow));
 

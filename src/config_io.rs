@@ -17,7 +17,11 @@ pub fn load_config(path: &Path, items: &[ConfigItem]) -> Result<HashMap<String, 
             .with_context(|| format!("Failed to parse config file: {:?}", path))?;
 
         for (key, val) in parsed {
-            if items.iter().any(|i| i.name == key) {
+            if let Some(item) = items.iter().find(|i| i.name == key) {
+                if let Err(e) = item.validate(&val) {
+                    eprintln!("Warning: {}", e);
+                    continue;
+                }
                 values.insert(key, val);
             }
         }
@@ -77,6 +81,8 @@ mod tests {
                 help: None,
                 options: None,
                 feature: None,
+                range: None,
+                regex: None,
             },
             ConfigItem {
                 name: "B".to_string(),
@@ -87,6 +93,8 @@ mod tests {
                 help: None,
                 options: None,
                 feature: None,
+                range: None,
+                regex: None,
             },
         ];
 
@@ -115,6 +123,8 @@ mod tests {
             help: None,
             options: None,
             feature: None,
+            range: None,
+            regex: None,
         }];
 
         let mut values = HashMap::new();

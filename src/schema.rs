@@ -59,6 +59,68 @@ pub struct ConfigItem {
     pub help: Option<String>,
     pub options: Option<Vec<String>>,
     pub feature: Option<Vec<String>>,
+    pub range: Option<(i64, i64)>,
+    pub regex: Option<String>,
+}
+
+impl ConfigItem {
+    pub fn validate(&self, value: &toml::Value) -> Result<(), String> {
+        match self.config_type {
+            ConfigType::Bool => {
+                if !value.is_bool() {
+                    return Err(format!(
+                        "Config '{}' expected bool, found {:?}",
+                        self.name, value
+                    ));
+                }
+            }
+            ConfigType::Int | ConfigType::Hex => {
+                let val = value.as_integer().ok_or_else(|| {
+                    format!("Config '{}' expected integer, found {:?}", self.name, value)
+                })?;
+                if let Some((min, max)) = self.range {
+                    if val < min || val > max {
+                        return Err(format!(
+                            "Config '{}' value {} out of range [{}, {}]",
+                            self.name, val, min, max
+                        ));
+                    }
+                }
+            }
+            ConfigType::String => {
+                let val = value.as_str().ok_or_else(|| {
+                    format!("Config '{}' expected string, found {:?}", self.name, value)
+                })?;
+                if let Some(regex_str) = &self.regex {
+                    let re = regex::Regex::new(regex_str)
+                        .map_err(|e| format!("Invalid regex for config '{}': {}", self.name, e))?;
+                    if !re.is_match(val) {
+                        return Err(format!(
+                            "Config '{}' value \"{}\" does not match regex / {} /",
+                            self.name, val, regex_str
+                        ));
+                    }
+                }
+            }
+            ConfigType::Choice => {
+                let val = value.as_str().ok_or_else(|| {
+                    format!(
+                        "Config '{}' expected string (choice), found {:?}",
+                        self.name, value
+                    )
+                })?;
+                if let Some(options) = &self.options {
+                    if !options.contains(&val.to_string()) {
+                        return Err(format!(
+                            "Config '{}' value \"{}\" is not a valid option. Valid options are: {:?}",
+                            self.name, val, options
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -100,6 +162,47 @@ mod tests {
             ConfigType::String.format_value_rust(&Value::String("hi".to_string())),
             Some("\"hi\"".to_string())
         );
+    }
+
+    #[test]
+    fn test_validation() {
+        let item = ConfigItem {
+            name: "PORT".to_string(),
+            config_type: ConfigType::Int,
+            default: None,
+            desc: "Port".to_string(),
+            depends_on: None,
+            help: None,
+            options: None,
+            feature: None,
+            range: Some((1, 65535)),
+            regex: None,
+        };
+
+        assert!(item.validate(&Value::Integer(80)).is_ok());
+        assert!(item.validate(&Value::Integer(0)).is_err());
+        assert!(item.validate(&Value::Integer(70000)).is_err());
+
+        let item_re = ConfigItem {
+            name: "NAME".to_string(),
+            config_type: ConfigType::String,
+            default: None,
+            desc: "Name".to_string(),
+            depends_on: None,
+            help: None,
+            options: None,
+            feature: None,
+            range: None,
+            regex: Some(r"^[a-z]+$".to_string()),
+        };
+
+        assert!(item_re
+            .validate(&Value::String("hello".to_string()))
+            .is_ok());
+        assert!(item_re
+            .validate(&Value::String("HELLO".to_string()))
+            .is_err());
+        assert!(item_re.validate(&Value::String("123".to_string())).is_err());
     }
 }
 
