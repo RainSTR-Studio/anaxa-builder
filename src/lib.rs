@@ -5,3 +5,5 @@ pub mod graph;
 pub mod parser;
 pub mod schema;
 pub mod tui;
+
+pub use codegen::rust::generate_consts;

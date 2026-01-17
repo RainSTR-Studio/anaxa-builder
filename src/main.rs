@@ -5,12 +5,13 @@ use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "anaxa-config")]
-#[command(about = "Anaxa Configuration System", long_about = None)]
+#[command(version, about = "Anaxa Configuration System", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
 
-    #[arg(default_value = "src")]
+    /// Source directory containing Kconfig.toml files
+    #[arg(short, long, default_value = "src", global = true)]
     dir: PathBuf,
 }
 
@@ -22,26 +23,34 @@ enum Commands {
     Dump,
     /// Launch interactive TUI
     Menuconfig {
+        /// Path to the local configuration file
         #[arg(short, long, default_value = ".config")]
         config: PathBuf,
     },
-    /// Generate code artifacts
+    /// Generate code artifacts (Rust, C, DOT)
     Generate {
+        /// Output directory for generated files
         #[arg(short, long, default_value = "generated")]
         out: PathBuf,
+        /// Path to the local configuration file
         #[arg(short, long, default_value = ".config")]
         config_file: PathBuf,
+        /// Generate C autoconf.h header
         #[arg(long)]
         c: bool,
+        /// Generate Rust constants and cfgs
         #[arg(long)]
         rust: bool,
+        /// Generate DOT dependency graph
         #[arg(long)]
         dot: bool,
     },
     /// Wrapper for cargo build with dynamic features from config
     Build {
+        /// Path to the local configuration file
         #[arg(short, long, default_value = ".config")]
         config_file: PathBuf,
+        /// Additional arguments to pass to cargo build
         #[arg(last = true)]
         args: Vec<String>,
     },
@@ -66,11 +75,87 @@ fn main() -> Result<()> {
             let tree = parser::build_config_tree(dir)?;
             anaxa_builder::tui::run(tree, config.clone())?;
         }
-        Commands::Generate { .. } => {
-            println!("Generator not yet fully integrated.");
+        Commands::Generate {
+            out,
+            config_file,
+            c,
+            rust,
+            dot,
+        } => {
+            let tree = parser::build_config_tree(dir)?;
+            let configs = parser::flatten_configs(&tree);
+            let values = anaxa_builder::config_io::load_config(config_file, &configs)?;
+
+            if !out.exists() {
+                std::fs::create_dir_all(out)?;
+            }
+
+            if *rust {
+                let rust_code = anaxa_builder::codegen::rust::generate_consts(&configs, &values)?;
+                std::fs::write(out.join("config.rs"), rust_code)?;
+                println!("Generated Rust constants in {:?}", out.join("config.rs"));
+            }
+
+            if *c {
+                let c_code = anaxa_builder::codegen::c::generate(&configs, &values)?;
+                std::fs::write(out.join("autoconf.h"), c_code)?;
+                println!("Generated C header in {:?}", out.join("autoconf.h"));
+            }
+
+            if *dot {
+                let graph = anaxa_builder::graph::ConfigGraph::build(&configs)?;
+                let dot_code = anaxa_builder::codegen::dot::generate(&graph)?;
+                std::fs::write(out.join("depends.dot"), dot_code)?;
+                println!("Generated DOT graph in {:?}", out.join("depends.dot"));
+            }
         }
-        Commands::Build { .. } => {
-            println!("Build wrapper not yet implemented.");
+        Commands::Build { config_file, args } => {
+            let tree = parser::build_config_tree(dir)?;
+            let configs = parser::flatten_configs(&tree);
+            let values = anaxa_builder::config_io::load_config(config_file, &configs)?;
+
+            let mut features = Vec::new();
+            let mut cfgs = Vec::new();
+            for item in &configs {
+                if let Some(val) = values.get(&item.name) {
+                    if val.as_bool() == Some(true) {
+                        if cfgs.contains(&item.name) {
+                            continue;
+                        }
+                        cfgs.push(item.name.clone());
+                        if let Some(f) = &item.feature {
+                            features.extend(f.iter().cloned());
+                        }
+                    }
+                }
+            }
+
+            let mut cmd = std::process::Command::new("cargo");
+            cmd.arg("build");
+            if !features.is_empty() {
+                cmd.arg("--features");
+                cmd.arg(features.join(","));
+            }
+            if !cfgs.is_empty() {
+                cmd.env("RUSTFLAGS", format!("--cfg {}", cfgs.join(" --cfg ")));
+            }
+            for (k, v) in values.iter() {
+                let v = match v {
+                    toml::Value::String(s) => s.clone(),
+                    toml::Value::Integer(i) => i.to_string(),
+                    toml::Value::Float(f) => f.to_string(),
+                    toml::Value::Boolean(b) => b.to_string(),
+                    _ => continue,
+                };
+                cmd.env(&format!("ANAXA_{}", k.to_uppercase()), v);
+            }
+            cmd.args(args);
+
+            println!("Executing: {:?}", cmd);
+            let status = cmd.status()?;
+            if !status.success() {
+                std::process::exit(status.code().unwrap_or(1));
+            }
         }
     }
     Ok(())
