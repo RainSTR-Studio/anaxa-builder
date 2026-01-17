@@ -26,31 +26,10 @@ pub fn generate(items: &[ConfigItem], values: &HashMap<String, toml::Value>) -> 
 fn write_item_define(buffer: &mut String, item: &ConfigItem, val: &toml::Value) -> Result<()> {
     let name = format!("CONFIG_{}", item.name);
 
-    match item.config_type {
-        ConfigType::Bool => {
-            if let Some(b) = val.as_bool() {
-                if b {
-                    writeln!(buffer, "#define {} 1", name)?;
-                } else {
-                    writeln!(buffer, "/* {} is not set */", name)?;
-                }
-            }
-        }
-        ConfigType::Int => {
-            if let Some(i) = val.as_integer() {
-                writeln!(buffer, "#define {} {}", name, i)?;
-            }
-        }
-        ConfigType::Hex => {
-            if let Some(i) = val.as_integer() {
-                writeln!(buffer, "#define {} 0x{:x}", name, i)?;
-            }
-        }
-        ConfigType::String | ConfigType::Choice => {
-            if let Some(s) = val.as_str() {
-                writeln!(buffer, "#define {} \"{}\"", name, s)?;
-            }
-        }
+    if item.config_type == ConfigType::Bool && val.as_bool() == Some(false) {
+        writeln!(buffer, "/* {} is not set */", name)?;
+    } else if let Some(formatted) = item.config_type.format_value_c(val) {
+        writeln!(buffer, "#define {} {}", name, formatted)?;
     }
     Ok(())
 }

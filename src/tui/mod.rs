@@ -184,84 +184,96 @@ fn on_tree_submit(s: &mut Cursive, idx: usize) {
             s.with_user_data(|state: &mut AppState| {
                 state.update_value(&name, toml::Value::Boolean(!is_true));
             });
-            let new_val = !is_true;
-            s.add_layer(Dialog::info(format!("Set {} to {}", name, new_val)));
+            s.add_layer(Dialog::info(format!("Set {} to {}", name, !is_true)));
         }
         ConfigType::String => {
             let val = current_val
                 .and_then(|v| v.as_str().map(|s| s.to_string()))
                 .unwrap_or_default();
-            s.add_layer(
-                Dialog::new()
-                    .title(&item.desc)
-                    .content(EditView::new().content(val).on_submit(move |s, text| {
-                        let name_clone = name.clone();
-                        s.with_user_data(|state: &mut AppState| {
-                            state.update_value(&name_clone, toml::Value::String(text.to_string()));
-                        });
-                        s.pop_layer();
-                    }))
-                    .button("Ok", |s| {
-                        s.pop_layer();
-                    }),
-            );
+            show_edit_dialog(s, &item.desc, &val, move |s, text| {
+                let name_clone = name.clone();
+                s.with_user_data(|state: &mut AppState| {
+                    state.update_value(&name_clone, toml::Value::String(text.to_string()));
+                });
+            });
         }
         ConfigType::Int => {
             let val = current_val
                 .and_then(|v| v.as_integer())
                 .unwrap_or(0)
                 .to_string();
-            s.add_layer(
-                Dialog::new()
-                    .title(&item.desc)
-                    .content(EditView::new().content(val).on_submit(move |s, text| {
-                        if let Ok(i) = text.parse::<i64>() {
-                            let name_clone = name.clone();
-                            s.with_user_data(|state: &mut AppState| {
-                                state.update_value(&name_clone, toml::Value::Integer(i));
-                            });
-                            s.pop_layer();
-                        } else {
-                            s.add_layer(Dialog::info("Invalid integer"));
-                        }
-                    }))
-                    .button("Ok", |s| {
-                        s.pop_layer();
-                    }),
-            );
+            show_edit_dialog(s, &item.desc, &val, move |s, text| {
+                if let Ok(i) = text.parse::<i64>() {
+                    let name_clone = name.clone();
+                    s.with_user_data(|state: &mut AppState| {
+                        state.update_value(&name_clone, toml::Value::Integer(i));
+                    });
+                } else {
+                    s.add_layer(Dialog::info("Invalid integer"));
+                }
+            });
         }
         ConfigType::Choice => {
             let opts = item.options.clone().unwrap_or_default();
-            let mut select = SelectView::new();
-            for opt in &opts {
-                select.add_item_str(opt);
-            }
-            let _current_sel = current_val
+            let current_sel = current_val
                 .and_then(|v| v.as_str().map(|s| s.to_string()))
                 .unwrap_or_default();
-
-            select.set_on_submit(move |s, val: &str| {
+            show_choice_dialog(s, &item.desc, &opts, &current_sel, move |s, val| {
                 let name_clone = name.clone();
                 let val_string = val.to_string();
                 s.with_user_data(|state: &mut AppState| {
                     state.update_value(&name_clone, toml::Value::String(val_string));
                 });
-                s.pop_layer();
             });
-
-            s.add_layer(
-                Dialog::new()
-                    .title(&item.desc)
-                    .content(select)
-                    .button("Cancel", |s| {
-                        s.pop_layer();
-                    }),
-            );
         }
         _ => {
             s.add_layer(Dialog::info("Editing this type not implemented yet"));
         }
     }
+}
+
+fn show_edit_dialog<F>(s: &mut Cursive, title: &str, initial: &str, on_submit: F)
+where
+    F: Fn(&mut Cursive, &str) + 'static + Send + Sync,
+{
+    s.add_layer(
+        Dialog::new()
+            .title(title)
+            .content(EditView::new().content(initial).on_submit(move |s, text| {
+                on_submit(s, text);
+                s.pop_layer();
+            }))
+            .button("Ok", |s| {
+                s.pop_layer();
+            }),
+    );
+}
+
+fn show_choice_dialog<F>(s: &mut Cursive, title: &str, opts: &[String], current: &str, on_submit: F)
+where
+    F: Fn(&mut Cursive, &str) + 'static + Send + Sync,
+{
+    let mut select = SelectView::new();
+    for opt in opts {
+        select.add_item_str(opt);
+    }
+    if let Some(idx) = opts.iter().position(|o| o == current) {
+        select.set_selection(idx);
+    }
+
+    select.set_on_submit(move |s, val: &str| {
+        on_submit(s, val);
+        s.pop_layer();
+    });
+
+    s.add_layer(
+        Dialog::new()
+            .title(title)
+            .content(select)
+            .button("Cancel", |s| {
+                s.pop_layer();
+            }),
+    );
 }
 
 fn save_action(s: &mut Cursive, path: &Path) {

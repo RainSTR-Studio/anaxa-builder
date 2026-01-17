@@ -57,3 +57,53 @@ pub fn collect_defaults(items: &[ConfigItem]) -> HashMap<String, toml::Value> {
     }
     map
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use toml::Value as TomlValue;
+
+    #[test]
+    fn test_evaluator_basic_bool() -> Result<()> {
+        let mut evaluator = Evaluator::new();
+        evaluator.set_variable("A", &TomlValue::Boolean(true))?;
+        evaluator.set_variable("B", &TomlValue::Boolean(false))?;
+
+        assert!(evaluator.check_dependency("A")?);
+        assert!(!evaluator.check_dependency("B")?);
+        assert!(evaluator.check_dependency("A && !B")?);
+        assert!(!evaluator.check_dependency("A && B")?);
+        Ok(())
+    }
+
+    #[test]
+    fn test_evaluator_integers() -> Result<()> {
+        let mut evaluator = Evaluator::new();
+        evaluator.set_variable("MAX", &TomlValue::Integer(10))?;
+        evaluator.set_variable("MIN", &TomlValue::Integer(0))?;
+
+        assert!(evaluator.check_dependency("MAX > MIN")?);
+        assert!(evaluator.check_dependency("MAX == 10")?);
+        assert!(evaluator.check_dependency("MAX")?);
+        assert!(!evaluator.check_dependency("MIN")?);
+        Ok(())
+    }
+
+    #[test]
+    fn test_evaluator_strings() -> Result<()> {
+        let mut evaluator = Evaluator::new();
+        evaluator.set_variable("MODE", &TomlValue::String("PROD".to_string()))?;
+
+        assert!(evaluator.check_dependency("MODE == \"PROD\"")?);
+        assert!(!evaluator.check_dependency("MODE == \"DEV\"")?);
+        Ok(())
+    }
+
+    #[test]
+    fn test_evaluator_empty_expr() -> Result<()> {
+        let evaluator = Evaluator::new();
+        assert!(evaluator.check_dependency("")?);
+        assert!(evaluator.check_dependency("  ")?);
+        Ok(())
+    }
+}

@@ -14,3 +14,10 @@ serde = { version = "1.0.228", features = ["derive"] }
 thiserror = "2.0.17"
 toml = "0.9.11"
 walkdir = "2.5.0"
+
+[dev-dependencies]
+tempfile = "3.24.0"
+
+[[bin]]
+name = "cargo-anaxa"
+path = "src/main.rs"

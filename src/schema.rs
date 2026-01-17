@@ -11,6 +11,37 @@ pub enum ConfigType {
     Choice,
 }
 
+impl ConfigType {
+    pub fn format_value_c(&self, val: &toml::Value) -> Option<String> {
+        match self {
+            ConfigType::Bool => val
+                .as_bool()
+                .map(|b| if b { "1".into() } else { "0".into() }),
+            ConfigType::Int => val.as_integer().map(|i| i.to_string()),
+            ConfigType::Hex => val.as_integer().map(|i| format!("0x{:x}", i)),
+            ConfigType::String | ConfigType::Choice => val.as_str().map(|s| format!("\"{}\"", s)),
+        }
+    }
+
+    pub fn format_value_rust(&self, val: &toml::Value) -> Option<String> {
+        match self {
+            ConfigType::Bool => val.as_bool().map(|b| b.to_string()),
+            ConfigType::Int => val.as_integer().map(|i| i.to_string()),
+            ConfigType::Hex => val.as_integer().map(|i| format!("0x{:x}", i)),
+            ConfigType::String | ConfigType::Choice => val.as_str().map(|s| format!("\"{}\"", s)),
+        }
+    }
+
+    pub fn rust_type(&self) -> &'static str {
+        match self {
+            ConfigType::Bool => "bool",
+            ConfigType::Int => "i64",
+            ConfigType::Hex => "u64",
+            ConfigType::String | ConfigType::Choice => "&str",
+        }
+    }
+}
+
 impl fmt::Display for ConfigType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)

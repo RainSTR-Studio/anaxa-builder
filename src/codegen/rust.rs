@@ -15,27 +15,14 @@ pub fn generate_consts(
 
     for item in items {
         if let Some(val) = values.get(&item.name) {
-            match item.config_type {
-                ConfigType::Bool => {
-                    if let Some(b) = val.as_bool() {
-                        writeln!(buffer, "pub const {}: bool = {};", item.name, b)?;
-                    }
-                }
-                ConfigType::Int => {
-                    if let Some(i) = val.as_integer() {
-                        writeln!(buffer, "pub const {}: i64 = {};", item.name, i)?;
-                    }
-                }
-                ConfigType::Hex => {
-                    if let Some(i) = val.as_integer() {
-                        writeln!(buffer, "pub const {}: u64 = 0x{:x};", item.name, i)?;
-                    }
-                }
-                ConfigType::String | ConfigType::Choice => {
-                    if let Some(s) = val.as_str() {
-                        writeln!(buffer, "pub const {}: &str = \"{}\";", item.name, s)?;
-                    }
-                }
+            if let Some(formatted) = item.config_type.format_value_rust(val) {
+                writeln!(
+                    buffer,
+                    "pub const {}: {} = {};",
+                    item.name,
+                    item.config_type.rust_type(),
+                    formatted
+                )?;
             }
         }
     }
@@ -51,13 +38,13 @@ pub fn generate_cargo_keys(
 
     for item in items {
         if let Some(val) = values.get(&item.name) {
-            if item.config_type == ConfigType::Bool && val.as_bool() == Some(true) {
-                writeln!(buffer, "cargo:rustc-cfg={}", item.name)?;
-            }
             match item.config_type {
+                ConfigType::Bool if val.as_bool() == Some(true) => {
+                    writeln!(buffer, "cargo:rustc-cfg={}", item.name)?;
+                }
                 ConfigType::String | ConfigType::Choice => {
-                    if let Some(s) = val.as_str() {
-                        writeln!(buffer, "cargo:rustc-cfg={}=\"{}\"", item.name, s)?;
+                    if let Some(formatted) = item.config_type.format_value_rust(val) {
+                        writeln!(buffer, "cargo:rustc-cfg={}={}", item.name, formatted)?;
                     }
                 }
                 _ => {}
