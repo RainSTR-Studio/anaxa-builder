@@ -19,7 +19,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Validate schemas and check for cycles
-    Check,
+    ConfigCheck,
     /// Inspect parsed configuration structure
     Dump,
     /// Launch interactive TUI
@@ -46,6 +46,18 @@ enum Commands {
         #[arg(long)]
         dot: bool,
     },
+    /// Wrapper for cargo check with dynamic features from config
+    Check {
+        /// Path to the local configuration file
+        #[arg(short, long, default_value = ".config")]
+        config_file: PathBuf,
+        /// Do not inject ANAXA_* environment variables
+        #[arg(long)]
+        no_env: bool,
+        /// Additional arguments to pass to cargo check
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
     /// Wrapper for cargo build with dynamic features from config
     Build {
         /// Path to the local configuration file
@@ -55,6 +67,18 @@ enum Commands {
         #[arg(long)]
         no_env: bool,
         /// Additional arguments to pass to cargo build
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Wrapper for cargo run with dynamic features from config
+    Run {
+        /// Path to the local configuration file
+        #[arg(short, long, default_value = ".config")]
+        config_file: PathBuf,
+        /// Do not inject ANAXA_* environment variables
+        #[arg(long)]
+        no_env: bool,
+        /// Additional arguments to pass to cargo run
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
@@ -86,7 +110,7 @@ fn main() -> Result<()> {
     let dir = &cli.dir;
 
     match &cli.command {
-        Commands::Check => {
+        Commands::ConfigCheck => {
             let tree = parser::build_config_tree(dir)?;
             let configs = parser::flatten_configs(&tree);
             graph::ConfigGraph::build(&configs)?;
@@ -148,63 +172,26 @@ fn main() -> Result<()> {
                 println!("Generated DOT graph in {:?}", out.join("depends.dot"));
             }
         }
+        Commands::Check {
+            config_file,
+            no_env,
+            args,
+        } => {
+            run_cargo_wrapper("check", dir, config_file, *no_env, args)?;
+        }
         Commands::Build {
             config_file,
             no_env,
             args,
         } => {
-            let tree = parser::build_config_tree(dir)?;
-            let configs = parser::flatten_configs(&tree);
-            let values = anaxa_builder::config_io::load_config(config_file, &configs)?;
-
-            let mut features = Vec::new();
-            let mut cfgs = Vec::new();
-            for item in &configs {
-                if let Some(val) = values.get(&item.name) {
-                    if val.as_bool() == Some(true) {
-                        if cfgs.contains(&item.name) {
-                            continue;
-                        }
-                        cfgs.push(item.name.clone());
-                        if let Some(f) = &item.feature {
-                            features.extend(f.iter().cloned());
-                        }
-                    }
-                }
-            }
-
-            let mut cmd = std::process::Command::new("cargo");
-            cmd.arg("build");
-            if !features.is_empty() {
-                cmd.arg("--features");
-                cmd.arg(features.join(","));
-            }
-            if !cfgs.is_empty() {
-                let raw_rustflags = std::env::var("RUSTFLAGS").unwrap_or_default();
-                cmd.env(
-                    "RUSTFLAGS",
-                    format!("{} --cfg {}", raw_rustflags, cfgs.join(" --cfg ")),
-                );
-            }
-            if !*no_env {
-                for (k, v) in values.iter() {
-                    let v = match v {
-                        toml::Value::String(s) => s.clone(),
-                        toml::Value::Integer(i) => i.to_string(),
-                        toml::Value::Float(f) => f.to_string(),
-                        toml::Value::Boolean(b) => b.to_string(),
-                        _ => continue,
-                    };
-                    cmd.env(format!("ANAXA_{}", k.to_uppercase()), v);
-                }
-            }
-            cmd.args(args);
-
-            println!("Executing: {:?}", cmd);
-            let status = cmd.status()?;
-            if !status.success() {
-                std::process::exit(status.code().unwrap_or(1));
-            }
+            run_cargo_wrapper("build", dir, config_file, *no_env, args)?;
+        }
+        Commands::Run {
+            config_file,
+            no_env,
+            args,
+        } => {
+            run_cargo_wrapper("run", dir, config_file, *no_env, args)?;
         }
         Commands::Savedefconfig { out, config_file } => {
             let tree = parser::build_config_tree(dir)?;
@@ -221,6 +208,68 @@ fn main() -> Result<()> {
             anaxa_builder::config_io::save_config(config_file, &values)?;
             println!("Updated configuration from {:?} to {:?}", file, config_file);
         }
+    }
+    Ok(())
+}
+
+fn run_cargo_wrapper(
+    subcommand: &str,
+    dir: &PathBuf,
+    config_file: &PathBuf,
+    no_env: bool,
+    args: &[String],
+) -> Result<()> {
+    let tree = parser::build_config_tree(dir)?;
+    let configs = parser::flatten_configs(&tree);
+    let values = anaxa_builder::config_io::load_config(config_file, &configs)?;
+
+    let mut features = Vec::new();
+    let mut cfgs = Vec::new();
+    for item in &configs {
+        if let Some(val) = values.get(&item.name) {
+            if val.as_bool() == Some(true) {
+                if cfgs.contains(&item.name) {
+                    continue;
+                }
+                cfgs.push(item.name.clone());
+                if let Some(f) = &item.feature {
+                    features.extend(f.iter().cloned());
+                }
+            }
+        }
+    }
+
+    let mut cmd = std::process::Command::new("cargo");
+    cmd.arg(subcommand);
+    if !features.is_empty() {
+        cmd.arg("--features");
+        cmd.arg(features.join(","));
+    }
+    if !cfgs.is_empty() {
+        let raw_rustflags = std::env::var("RUSTFLAGS").unwrap_or_default();
+        cmd.env(
+            "RUSTFLAGS",
+            format!("{} --cfg {}", raw_rustflags, cfgs.join(" --cfg ")),
+        );
+    }
+    if !no_env {
+        for (k, v) in values.iter() {
+            let v = match v {
+                toml::Value::String(s) => s.clone(),
+                toml::Value::Integer(i) => i.to_string(),
+                toml::Value::Float(f) => f.to_string(),
+                toml::Value::Boolean(b) => b.to_string(),
+                _ => continue,
+            };
+            cmd.env(format!("ANAXA_{}", k.to_uppercase()), v);
+        }
+    }
+    cmd.args(args);
+
+    println!("Executing: {:?}", cmd);
+    let status = cmd.status()?;
+    if !status.success() {
+        std::process::exit(status.code().unwrap_or(1));
     }
     Ok(())
 }
