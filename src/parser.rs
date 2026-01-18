@@ -91,15 +91,15 @@ pub fn build_config_tree<P: AsRef<Path>>(root: P) -> Result<ConfigNode> {
                 }
 
                 let desc = kconfig
-                    .desc
+                    .title
                     .clone()
-                    .or_else(|| kconfig.title.clone())
                     .unwrap_or_else(|| rel_path.to_string_lossy().into_owned());
 
                 nodes.insert(
                     rel_path.clone(),
                     ConfigNode {
                         desc,
+                        description: kconfig.desc.clone(),
                         help: kconfig.help.clone(),
                         configs: kconfig.configs.unwrap_or_default(),
                         children: Vec::new(),

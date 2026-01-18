@@ -327,6 +327,7 @@ pub struct KconfigFile {
 #[derive(Debug, Clone)]
 pub struct ConfigNode {
     pub desc: String,
+    pub description: Option<String>,
     pub help: Option<String>,
     pub configs: Vec<ConfigItem>,
     pub children: Vec<ConfigNode>,
