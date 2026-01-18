@@ -32,6 +32,7 @@ impl BuildHelper {
     }
 
     pub fn build(self) -> Result<()> {
+        check_version_compatibility()?;
         let tree = parser::build_config_tree(&self.kconfig_dir)?;
         let configs = parser::flatten_configs(&tree);
         let values = config_io::load_config(&self.config_file, &configs)?;
@@ -80,6 +81,7 @@ where
     P1: AsRef<Path>,
     P2: AsRef<Path>,
 {
+    check_version_compatibility()?;
     let kconfig_dir = kconfig_dir.as_ref();
     let config_file = config_file.as_ref();
 
@@ -114,6 +116,35 @@ fn emit_rerun_if_changed(dir: &Path) -> Result<()> {
     for entry in WalkDir::new(dir).into_iter().filter_map(|e| e.ok()) {
         if entry.file_name() == "Kconfig.toml" {
             println!("cargo:rerun-if-changed={}", entry.path().display());
+        }
+    }
+    Ok(())
+}
+
+fn check_version_compatibility() -> Result<()> {
+    if let Ok(cli_version) = env::var("ANAXA_CLI_VERSION") {
+        let lib_version = env!("CARGO_PKG_VERSION");
+        if cli_version != lib_version {
+            // Check if major/minor versions match
+            let cli_parts: Vec<&str> = cli_version.split('.').collect();
+            let lib_parts: Vec<&str> = lib_version.split('.').collect();
+
+            if cli_parts.len() >= 2 && lib_parts.len() >= 2 {
+                if cli_parts[0] != lib_parts[0] || cli_parts[1] != lib_parts[1] {
+                    println!(
+                        "cargo:warning=Version mismatch: anaxa-builder CLI (v{}) and library (v{}) are not compatible.",
+                        cli_version, lib_version
+                    );
+                    println!(
+                        "cargo:warning=Please ensure both CLI and library have the same major.minor version."
+                    );
+                }
+            } else if cli_version != lib_version {
+                println!(
+                    "cargo:warning=Version mismatch detected: CLI v{}, Lib v{}",
+                    cli_version, lib_version
+                );
+            }
         }
     }
     Ok(())

@@ -241,6 +241,7 @@ fn run_cargo_wrapper(
 
     let mut cmd = std::process::Command::new("cargo");
     cmd.arg(subcommand);
+    cmd.env("ANAXA_CLI_VERSION", env!("CARGO_PKG_VERSION"));
     if !features.is_empty() {
         cmd.arg("--features");
         cmd.arg(features.join(","));
