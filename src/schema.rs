@@ -315,6 +315,7 @@ pub struct Menu {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KconfigFile {
     pub title: Option<String>,
+    pub desc: Option<String>,
     pub help: Option<String>,
     pub depends_on: Option<String>,
     #[serde(rename = "config")]

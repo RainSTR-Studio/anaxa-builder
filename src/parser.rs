@@ -91,8 +91,9 @@ pub fn build_config_tree<P: AsRef<Path>>(root: P) -> Result<ConfigNode> {
                 }
 
                 let desc = kconfig
-                    .title
+                    .desc
                     .clone()
+                    .or_else(|| kconfig.title.clone())
                     .unwrap_or_else(|| rel_path.to_string_lossy().into_owned());
 
                 nodes.insert(
@@ -255,10 +256,12 @@ mod tests {
 
         let root = ConfigNode {
             desc: "root".to_string(),
+            description: None,
             help: None,
             configs: vec![item1.clone()],
             children: vec![ConfigNode {
                 desc: "child".to_string(),
+                description: None,
                 help: None,
                 configs: vec![item2.clone()],
                 children: Vec::new(),

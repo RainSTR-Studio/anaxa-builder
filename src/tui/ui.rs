@@ -123,7 +123,7 @@ fn draw_main(f: &mut Frame, app: &mut App, area: Rect) {
     }
 
     for child in children {
-        items.push(ListItem::new(Line::from(vec![
+        let mut spans = vec![
             Span::styled(
                 format!("{:<30}", child.desc),
                 Style::default()
@@ -131,7 +131,16 @@ fn draw_main(f: &mut Frame, app: &mut App, area: Rect) {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(" ➔ ", Style::default().fg(Color::Blue)),
-        ])));
+        ];
+
+        if let Some(description) = &child.description {
+            spans.push(Span::styled(
+                format!(" - {}", description),
+                Style::default().fg(Color::Gray),
+            ));
+        }
+
+        items.push(ListItem::new(Line::from(spans)));
     }
 
     let title = format!(" Configuration {} ", if app.is_dirty { "*" } else { "" });
@@ -405,6 +414,15 @@ fn draw_help_sidebar(f: &mut Frame, app: &App, area: Rect) {
                 Span::styled("Submenu: ", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(&child.desc),
             ]));
+            if let Some(description) = &child.description {
+                help_text.push(Line::from(vec![
+                    Span::styled(
+                        "Description: ",
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw(description),
+                ]));
+            }
             help_text.push(Line::from(vec![
                 Span::styled("Path: ", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(&child.path),
