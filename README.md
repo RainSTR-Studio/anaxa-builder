@@ -18,6 +18,7 @@
 - 🚀 **Cargo 集成**: 像 `cargo run` 一样无缝运行，自动注入配置为 Features 和 CFG
 - 🌳 **灵活映射**: 支持自动递归扫描，也支持通过 `[menu]` 显式定义逻辑层级
 - 🏗️ **构建系统集成**: 提供 `BuildHelper` Fluent API，轻松集成到 `build.rs`
+- 🛡️ **版本校验**: 自动检查 CLI 工具与项目依赖库的版本兼容性
 
 ## 安装
 
@@ -83,14 +84,14 @@ cargo anaxa menuconfig
 ```
 
 在 TUI 中：
-- 使用方向键导航
-- 按 `[Y]` 启用/禁用 bool 选项
-- 按 `[N]` 禁用选项
-- 按 `[M]` 选择/取消选择 choice 选项
-- 按 `?` 查看帮助信息
-- 按 `/` 搜索配置项
-- 按 `[S]` 保存配置到 `.config`
-- 按 `[Q]` 退出
+- **方向键 / J, K**: 上下导航
+- **Enter**: 进入子菜单或确认输入
+- **Esc**: 返回上一级或取消
+- **Space**: 启用/禁用 bool 选项
+- **/**: 开启全局搜索 (支持实时预览和智能跳转)
+- **S**: 保存当前配置到 `.config`
+- **Q**: 退出 (若有未保存更改会提示)
+- **?**: 开启/关闭侧边栏详细帮助信息
 
 ### 4. 运行项目
 
@@ -112,6 +113,7 @@ cargo anaxa build --release
 - 将 `bool` 类型且开启的选项注入为 Cargo Features (如果指定了 `feature` 字段)
 - 将所有开启的 `bool` 选项注入为 `--cfg NAME`
 - 将所有配置值注入为环境变量 `ANAXA_NAME=VALUE`
+- **版本校验**: 自动确保你的 `cargo-anaxa` CLI 版本与项目 `build.rs` 中引用的 `anaxa-builder` 库版本兼容。
 
 ## 高级功能：显式菜单映射
 
@@ -232,7 +234,8 @@ cargo anaxa generate
 - [x] 代码生成（C、Rust、DOT）
 - [x] Cargo 包装命令 (run/check/build)
 - [x] 显式菜单映射 ([menu])
-- [ ] 搜索功能增强 (TUI)
+- [x] 搜索功能增强 (TUI)
+- [x] 版本校验 (CLI vs Library)
 - [ ] TUI 帮助系统完善
 - [ ] build.rs 深度集成
 
