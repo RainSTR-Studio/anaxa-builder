@@ -15,8 +15,9 @@
 - 🎯 **类型安全**: 支持 `bool`、`int`、`string`、`hex`、`choice` 等多种配置类型
 - 🛡️ **静态校验**: 支持数值范围限制 (`range`) 和正则表达式匹配 (`regex`)
 - 🔧 **代码生成**: 自动生成 C 头文件、Rust 常量和 Cargo CFG keys
+- 🚀 **Cargo 集成**: 像 `cargo run` 一样无缝运行，自动注入配置为 Features 和 CFG
+- 🌳 **灵活映射**: 支持自动递归扫描，也支持通过 `[menu]` 显式定义逻辑层级
 - 🏗️ **构建系统集成**: 提供 `BuildHelper` Fluent API，轻松集成到 `build.rs`
-- 🌳 **递归扫描**: 自动发现并聚合 `src/` 目录下所有子目录的配置文件
 
 ## 安装
 
@@ -68,7 +69,7 @@ desc = "Device identification name"
 
 ```bash
 # 检查 Schema 有效性并检测循环依赖
-cargo anaxa check
+cargo anaxa config-check
 
 # 查看解析后的配置结构
 cargo anaxa dump
@@ -91,37 +92,48 @@ cargo anaxa menuconfig
 - 按 `[S]` 保存配置到 `.config`
 - 按 `[Q]` 退出
 
-### 4. 生成代码
+### 4. 运行项目
+
+无需手动传递复杂的 `--features` 或 `--cfg`，直接使用包装命令：
 
 ```bash
-# 生成代码到 generated/ 目录
-cargo anaxa generate
-```
+# 自动注入配置并运行
+cargo anaxa run
 
-这将生成：
-- `generated/autoconf.h` - C 头文件
-- `generated/config.rs` - Rust 常量
-- `generated/depends.dot` - 依赖关系图（可选）
+# 自动注入配置并检查
+cargo anaxa check
 
-### 5. 在 build.rs 中集成
-
-在你的 `build.rs` 中添加以下代码，即可实现配置自动生成和环境变量注入：
-
-```rust
-fn main() -> anyhow::Result<()> {
-    anaxa_builder::BuildHelper::new()?
-        .with_kconfig_dir("src")     // Schema 扫描目录
-        .with_config_file(".config")  // 配置文件路径
-        .build()?;
-    Ok(())
-}
+# 自动注入配置并构建
+cargo anaxa build --release
 ```
 
 这会自动：
-- 生成 `config.rs` 到 `OUT_DIR`
-- 设置 `cargo:rustc-cfg` 标志
-- 注入 `ANAXA_` 前缀的环境变量
-- 自动处理 `rerun-if-changed` 逻辑
+- 读取 `.config` 中的值
+- 将 `bool` 类型且开启的选项注入为 Cargo Features (如果指定了 `feature` 字段)
+- 将所有开启的 `bool` 选项注入为 `--cfg NAME`
+- 将所有配置值注入为环境变量 `ANAXA_NAME=VALUE`
+
+## 高级功能：显式菜单映射
+
+默认情况下，Anaxa 会按照物理目录结构自动构建配置菜单。如果你的逻辑结构与物理结构不一致（例如想把深层子目录提升到根菜单），可以使用 `[menu]` 块。
+
+```toml
+# 根目录 Kconfig.toml
+title = "My Project"
+
+[menu]
+# 将 src/Kconfig.toml 映射为 "Kernel Core" 菜单
+core = "src"
+
+# 将 drivers/net/Kconfig.toml 映射为 "Network Drivers" 菜单
+# 即使物理上它在很深的目录，逻辑上它现在是根菜单的直接子项
+net_drivers = "drivers/net"
+
+# 任意路径映射
+fs = "filesystem/vfs"
+```
+
+这种方式允许你完全解耦物理文件结构和逻辑配置菜单。子模块的 `title` 依然由其自身的 `Kconfig.toml` 定义，父模块只负责层级组织。
 
 ## 配置类型
 
@@ -162,13 +174,14 @@ depends_on = "USE_TLS || USE_SSL"
 ```
 anaxa-builder/
 ├── src/
+│   ├── tui/            # 交互式终端界面 (Action/Handler/UI 分离架构)
 │   ├── codegen/        # 代码生成器（C、Rust、DOT）
-│   ├── schema.rs      # 配置项数据模型
-│   ├── parser.rs      # TOML 解析器
-│   ├── graph.rs       # 依赖图构建
-│   ├── logic.rs       # 表达式求值逻辑
-│   └── config_io.rs   # .config 文件读写
-├── generated/         # 生成的代码文件
+│   ├── schema.rs       # 配置项数据模型
+│   ├── parser.rs       # TOML 解析器 (支持显式/隐式映射)
+│   ├── graph.rs        # 依赖图构建
+│   ├── logic.rs        # 表达式求值逻辑
+│   └── config_io.rs    # .config 文件读写
+├── generated/          # 生成的代码文件
 │   ├── autoconf.h
 │   ├── config.rs
 │   └── depends.dot
@@ -183,15 +196,18 @@ anaxa-builder/
 - **表达式解析**: `evalexpr`
 - **图算法**: `petgraph`
 - **文件扫描**: `walkdir`
+- **TUI**: `ratatui` + `crossterm`
 
 ## 命令参考
 
 ```bash
 # 验证 Schema 和依赖
-cargo anaxa check
+cargo anaxa config-check
 
-# 查看配置结构
-cargo anaxa dump
+# 包装 Cargo 命令（自动注入 Features/CFG/Env）
+cargo anaxa run
+cargo anaxa check
+cargo anaxa build
 
 # 启动交互式配置
 cargo anaxa menuconfig
@@ -214,10 +230,11 @@ cargo anaxa generate
 - [x] 依赖图构建与循环检测
 - [x] 交互式 TUI（基础功能）
 - [x] 代码生成（C、Rust、DOT）
-- [ ] 搜索功能增强
+- [x] Cargo 包装命令 (run/check/build)
+- [x] 显式菜单映射 ([menu])
+- [ ] 搜索功能增强 (TUI)
 - [ ] TUI 帮助系统完善
 - [ ] build.rs 深度集成
-- [ ] Cargo Features 动态支持
 
 ## 贡献
 
