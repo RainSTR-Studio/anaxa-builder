@@ -273,8 +273,7 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
             " [Enter] Confirm  [Esc] Cancel  [Backspace] Delete ".to_string()
         }
     } else {
-        let help_base =
-            " [Enter/L] Enter  [Esc/H] Back  [Space/Y/I] Edit  [S] Save  [?] Help  [Q] Quit ";
+        let help_base = " [Enter] Enter  [Esc] Back  [Space] Edit  [S] Save  [?] Help  [Q] Quit ";
         if app.ui.show_help {
             format!("{} [J/K] Scroll Help ", help_base)
         } else {
