@@ -18,7 +18,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         ])
         .split(f.area());
 
-    draw_header(f, app, chunks[0]);
+    draw_header(f, chunks[0], &app.get_path_string());
 
     if app.ui.show_help {
         let main_chunks = Layout::default()
@@ -31,7 +31,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         draw_main(f, app, chunks[1]);
     }
 
-    draw_footer(f, app, chunks[2]);
+    draw_footer(f, chunks[2], app);
 
     if app.ui.editor.is_some() {
         let is_choice = app
@@ -56,8 +56,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     }
 }
 
-fn draw_header(f: &mut Frame, app: &App, area: Rect) {
-    let breadcrumbs = app.get_path_string();
+fn draw_header(f: &mut Frame, area: Rect, breadcrumbs: &str) {
     let header_text = vec![Line::from(vec![
         Span::styled(
             " ANAXA BUILDER ",
@@ -257,7 +256,7 @@ fn draw_quit_confirm(f: &mut Frame) {
     f.render_widget(text, area);
 }
 
-fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
+fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(0), Constraint::Length(15)])

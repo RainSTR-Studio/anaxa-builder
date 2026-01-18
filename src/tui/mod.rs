@@ -3,7 +3,7 @@ use crate::parser;
 use crate::schema::{ConfigItem, ConfigNode};
 use anyhow::Result;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    event::{self, DisableMouseCapture, EnableMouseCapture},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -17,7 +17,11 @@ use std::io;
 use std::path::PathBuf;
 use toml::Value;
 
+pub mod action;
+pub mod handler;
 pub mod ui;
+
+use action::Action;
 
 pub struct Editor {
     pub config: ConfigItem,
@@ -373,141 +377,57 @@ impl App {
         self.ui.editor = None;
     }
 
+    pub fn handle_action(&mut self, action: Action) -> bool {
+        match action {
+            Action::Next => self.next(),
+            Action::Previous => self.previous(),
+            Action::Enter => self.enter(),
+            Action::Back => self.back(),
+            Action::ToggleBool => self.toggle_bool(),
+            Action::SubmitChoice => self.submit_choice(),
+            Action::NextChoice => self.next_choice(),
+            Action::PreviousChoice => self.previous_choice(),
+            Action::SubmitInput => self.submit_input(),
+            Action::CancelInput => self.cancel_input(),
+            Action::InputChar(c) => {
+                if let Some(editor) = &mut self.ui.editor {
+                    editor.input.push(c);
+                }
+            }
+            Action::Backspace => {
+                if let Some(editor) = &mut self.ui.editor {
+                    editor.input.pop();
+                }
+            }
+            Action::Save => {
+                let _ = self.save();
+            }
+            Action::QuitRequest => {
+                if self.is_dirty {
+                    self.ui.show_quit_confirm = true;
+                } else {
+                    return true;
+                }
+            }
+            Action::ConfirmQuit => {
+                let _ = self.save();
+                return true;
+            }
+            Action::DiscardQuit => return true,
+            Action::CancelQuit => self.ui.show_quit_confirm = false,
+            Action::ToggleHelp => self.ui.show_help = !self.ui.show_help,
+            Action::HelpScrollUp => self.help_scroll_up(),
+            Action::HelpScrollDown => self.help_scroll_down(),
+            Action::ClearNotification => self.clear_notification(),
+        }
+        false
+    }
+
     pub fn save(&mut self) -> Result<()> {
         config_io::save_config(&self.config_path, &self.values)?;
         self.is_dirty = false;
         self.notify(format!("Config saved to {:?}", self.config_path));
         Ok(())
-    }
-
-    pub fn handle_event(&mut self, event: Event) -> io::Result<bool> {
-        match event {
-            Event::Key(key) => self.handle_key_event(key),
-            Event::Mouse(mouse) => self.handle_mouse_event(mouse),
-            _ => Ok(false),
-        }
-    }
-
-    fn handle_mouse_event(&mut self, mouse: event::MouseEvent) -> io::Result<bool> {
-        match mouse.kind {
-            event::MouseEventKind::ScrollUp => {
-                if self.ui.show_help {
-                    self.help_scroll_up();
-                } else {
-                    self.previous();
-                }
-            }
-            event::MouseEventKind::ScrollDown => {
-                if self.ui.show_help {
-                    self.help_scroll_down();
-                } else {
-                    self.next();
-                }
-            }
-            event::MouseEventKind::Down(event::MouseButton::Left) => {
-                if self.ui.notification.is_some() {
-                    self.clear_notification();
-                }
-            }
-
-            _ => {}
-        }
-        Ok(false)
-    }
-
-    fn handle_key_event(&mut self, key: event::KeyEvent) -> io::Result<bool> {
-        if self.ui.notification.is_some() {
-            self.clear_notification();
-            return Ok(false);
-        }
-
-        if self.ui.show_quit_confirm {
-            return self.handle_quit_confirm(key);
-        }
-
-        if self.ui.editor.is_some() {
-            self.handle_editing_key(key);
-        } else {
-            return self.handle_main_key(key);
-        }
-        Ok(false)
-    }
-
-    fn handle_quit_confirm(&mut self, key: event::KeyEvent) -> io::Result<bool> {
-        match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') => {
-                let _ = self.save();
-                Ok(true)
-            }
-            KeyCode::Char('n') | KeyCode::Char('N') => Ok(true),
-            KeyCode::Esc => {
-                self.ui.show_quit_confirm = false;
-                Ok(false)
-            }
-            _ => Ok(false),
-        }
-    }
-
-    fn handle_editing_key(&mut self, key: event::KeyEvent) {
-        let is_choice = self
-            .ui
-            .editor
-            .as_ref()
-            .map(|e| e.config.config_type == crate::schema::ConfigType::Choice)
-            .unwrap_or(false);
-
-        if is_choice {
-            match key.code {
-                KeyCode::Enter => self.submit_choice(),
-                KeyCode::Esc => self.cancel_input(),
-                KeyCode::Down | KeyCode::Char('j') => self.next_choice(),
-                KeyCode::Up | KeyCode::Char('k') => self.previous_choice(),
-                _ => {}
-            }
-        } else {
-            match key.code {
-                KeyCode::Enter => self.submit_input(),
-                KeyCode::Esc => self.cancel_input(),
-                KeyCode::Backspace => {
-                    if let Some(editor) = &mut self.ui.editor {
-                        editor.input.pop();
-                    }
-                }
-                KeyCode::Char(c) => {
-                    if let Some(editor) = &mut self.ui.editor {
-                        editor.input.push(c);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    fn handle_main_key(&mut self, key: event::KeyEvent) -> io::Result<bool> {
-        match key.code {
-            KeyCode::Char('q') => {
-                if self.is_dirty {
-                    self.ui.show_quit_confirm = true;
-                } else {
-                    return Ok(true);
-                }
-            }
-            KeyCode::Down | KeyCode::Char('j') => self.next(),
-            KeyCode::Up | KeyCode::Char('k') => self.previous(),
-            KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => self.enter(),
-            KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') => self.back(),
-            KeyCode::Char(' ') | KeyCode::Char('y') | KeyCode::Char('i') => self.toggle_bool(),
-            KeyCode::Char('s') => {
-                let _ = self.save();
-            }
-            KeyCode::Char('?') => {
-                self.ui.show_help = !self.ui.show_help;
-            }
-            KeyCode::PageUp | KeyCode::Char('K') => self.help_scroll_up(),
-            KeyCode::PageDown | KeyCode::Char('J') => self.help_scroll_down(),
-            _ => {}
-        }
-        Ok(false)
     }
 }
 
@@ -540,8 +460,10 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
     loop {
         terminal.draw(|f| ui::draw(f, &mut app))?;
 
-        if app.handle_event(event::read()?)? {
-            return Ok(());
+        if let Some(action) = handler::handle_event(&app, event::read()?) {
+            if app.handle_action(action) {
+                return Ok(());
+            }
         }
     }
 }
