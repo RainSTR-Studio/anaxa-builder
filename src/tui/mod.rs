@@ -30,6 +30,8 @@ pub struct UiState {
     pub list_state: ListState,
     pub notification: Option<String>,
     pub show_quit_confirm: bool,
+    pub show_help: bool,
+    pub help_scroll: u16,
     pub editor: Option<Editor>,
 }
 
@@ -69,6 +71,8 @@ impl App {
                 list_state,
                 notification: None,
                 show_quit_confirm: false,
+                show_help: false,
+                help_scroll: 0,
                 editor: None,
             },
         })
@@ -145,6 +149,7 @@ impl App {
             None => 0,
         };
         self.ui.list_state.select(Some(i));
+        self.ui.help_scroll = 0;
     }
 
     pub fn previous(&mut self) {
@@ -164,6 +169,7 @@ impl App {
             None => 0,
         };
         self.ui.list_state.select(Some(i));
+        self.ui.help_scroll = 0;
     }
 
     pub fn enter(&mut self) {
@@ -306,6 +312,16 @@ impl App {
 
     pub fn clear_notification(&mut self) {
         self.ui.notification = None;
+    }
+
+    pub fn help_scroll_up(&mut self) {
+        if self.ui.help_scroll > 0 {
+            self.ui.help_scroll -= 1;
+        }
+    }
+
+    pub fn help_scroll_down(&mut self) {
+        self.ui.help_scroll += 1;
     }
 
     pub fn submit_input(&mut self) {
@@ -456,6 +472,11 @@ impl App {
             KeyCode::Char('s') => {
                 let _ = self.save();
             }
+            KeyCode::Char('?') => {
+                self.ui.show_help = !self.ui.show_help;
+            }
+            KeyCode::PageUp | KeyCode::Char('K') => self.help_scroll_up(),
+            KeyCode::PageDown | KeyCode::Char('J') => self.help_scroll_down(),
             _ => {}
         }
         Ok(false)
@@ -506,6 +527,7 @@ mod tests {
     fn mock_app() -> App {
         let root = ConfigNode {
             desc: "Root".to_string(),
+            help: None,
             configs: vec![ConfigItem {
                 name: "cfg1".to_string(),
                 config_type: ConfigType::Bool,
@@ -521,6 +543,7 @@ mod tests {
             }],
             children: vec![ConfigNode {
                 desc: "Child".to_string(),
+                help: None,
                 configs: vec![],
                 children: vec![],
                 path: "root.child".to_string(),

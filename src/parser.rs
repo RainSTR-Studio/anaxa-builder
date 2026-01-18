@@ -35,6 +35,7 @@ pub fn build_config_tree<P: AsRef<Path>>(root: P) -> Result<ConfigNode> {
                 rel_path.to_path_buf(),
                 ConfigNode {
                     desc,
+                    help: kconfig.help.clone(),
                     configs: kconfig.configs.unwrap_or_default(),
                     children: Vec::new(),
                     path: rel_path.to_string_lossy().into_owned(),
@@ -135,9 +136,11 @@ mod tests {
 
         let root = ConfigNode {
             desc: "root".to_string(),
+            help: None,
             configs: vec![item1.clone()],
             children: vec![ConfigNode {
                 desc: "child".to_string(),
+                help: None,
                 configs: vec![item2.clone()],
                 children: Vec::new(),
                 path: "child".to_string(),

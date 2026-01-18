@@ -19,7 +19,18 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .split(f.area());
 
     draw_header(f, app, chunks[0]);
-    draw_main(f, app, chunks[1]);
+
+    if app.ui.show_help {
+        let main_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(0), Constraint::Length(40)])
+            .split(chunks[1]);
+        draw_main(f, app, main_chunks[0]);
+        draw_help_sidebar(f, app, main_chunks[1]);
+    } else {
+        draw_main(f, app, chunks[1]);
+    }
+
     draw_footer(f, app, chunks[2]);
 
     if app.ui.editor.is_some() {
@@ -253,17 +264,23 @@ fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
         .split(area);
 
     let help_text = if app.ui.show_quit_confirm {
-        " [Y] Save & Quit  [N] Discard & Quit  [Esc] Stay "
+        " [Y] Save & Quit  [N] Discard & Quit  [Esc] Stay ".to_string()
     } else if app.ui.notification.is_some() {
-        " [Any Key] Close Notification "
+        " [Any Key] Close Notification ".to_string()
     } else if let Some(editor) = &app.ui.editor {
         if editor.config.config_type == crate::schema::ConfigType::Choice {
-            " [Enter] Select  [Esc] Cancel  [J/K] Navigate "
+            " [Enter] Select  [Esc] Cancel  [J/K] Navigate ".to_string()
         } else {
-            " [Enter] Confirm  [Esc] Cancel  [Backspace] Delete "
+            " [Enter] Confirm  [Esc] Cancel  [Backspace] Delete ".to_string()
         }
     } else {
-        " [Enter/L] Enter  [Esc/H] Back  [Space/Y/I] Edit  [S] Save  [Q] Quit "
+        let help_base =
+            " [Enter/L] Enter  [Esc/H] Back  [Space/Y/I] Edit  [S] Save  [?] Help  [Q] Quit ";
+        if app.ui.show_help {
+            format!("{} [J/K] Scroll Help ", help_base)
+        } else {
+            help_base.to_string()
+        }
     };
 
     let status_text = if app.is_dirty {
@@ -285,6 +302,69 @@ fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
 
     f.render_widget(help, chunks[0]);
     f.render_widget(status, chunks[1]);
+}
+
+fn draw_help_sidebar(f: &mut Frame, app: &App, area: Rect) {
+    let selected = app.ui.list_state.selected().unwrap_or(0);
+    let (configs, children) = app.get_visible_items();
+
+    let mut help_text = Vec::new();
+
+    if selected < configs.len() {
+        let config = configs[selected];
+        help_text.push(Line::from(vec![
+            Span::styled("Name: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(&config.name),
+        ]));
+        help_text.push(Line::from(vec![
+            Span::styled("Type: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(format!("{}", config.config_type)),
+        ]));
+        if let Some(default) = &config.default {
+            help_text.push(Line::from(vec![
+                Span::styled("Default: ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(format!("{}", default)),
+            ]));
+        }
+        help_text.push(Line::from(""));
+        help_text.push(Line::from(vec![Span::styled(
+            "Help:",
+            Style::default().add_modifier(Modifier::BOLD),
+        )]));
+        let help = config.help.as_deref().unwrap_or("No help available.");
+        for line in help.lines() {
+            help_text.push(Line::from(format!("  {}", line)));
+        }
+    } else {
+        let child_index = selected - configs.len();
+        if let Some(child) = children.get(child_index) {
+            help_text.push(Line::from(vec![
+                Span::styled("Submenu: ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(&child.desc),
+            ]));
+            help_text.push(Line::from(vec![
+                Span::styled("Path: ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(&child.path),
+            ]));
+            if let Some(help) = &child.help {
+                help_text.push(Line::from(""));
+                help_text.push(Line::from(vec![Span::styled(
+                    "Help:",
+                    Style::default().add_modifier(Modifier::BOLD),
+                )]));
+                for line in help.lines() {
+                    help_text.push(Line::from(format!("  {}", line)));
+                }
+            }
+        }
+    }
+
+    let block = Block::default().borders(Borders::ALL).title(" Help ");
+    let paragraph = Paragraph::new(help_text)
+        .block(block)
+        .wrap(ratatui::widgets::Wrap { trim: true })
+        .scroll((app.ui.help_scroll, 0));
+    f.render_widget(paragraph, area);
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
