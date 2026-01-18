@@ -1,4 +1,4 @@
-use crate::schema::{ConfigItem, ConfigNode, KconfigFile};
+use crate::schema::{ConfigItem, ConfigNode, ConfigType, KconfigFile};
 use anyhow::{Context, Result};
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::fs;
@@ -165,6 +165,52 @@ pub fn flatten_configs(node: &ConfigNode) -> Vec<ConfigItem> {
     all_configs
 }
 
+/// Validate configuration items for global uniqueness and reserved names
+pub fn validate_configs(configs: &[ConfigItem]) -> Result<()> {
+    let mut seen_names = HashSet::new();
+    const RESERVED_NAMES: &[&str] = &["ANAXA_BUILDER_VERSION"];
+    let mut errors = Vec::new();
+
+    for item in configs {
+        if RESERVED_NAMES.contains(&item.name.as_str()) {
+            errors.push(format!(
+                "Config name '{}' is reserved and cannot be used",
+                item.name
+            ));
+        }
+
+        if !seen_names.insert(item.name.clone()) {
+            errors.push(format!("Duplicate config name found: '{}'", item.name));
+        }
+
+        if let Some(default_val) = &item.default {
+            if let Err(e) = item.validate(default_val) {
+                errors.push(format!(
+                    "Invalid default value for config '{}': {}",
+                    item.name, e
+                ));
+            }
+        }
+
+        if item.config_type == ConfigType::Choice
+            && (item.options.is_none() || item.options.as_ref().map_or(true, |o| o.is_empty()))
+        {
+            errors.push(format!(
+                "Config '{}' is a choice but has no options",
+                item.name
+            ));
+        }
+    }
+
+    if !errors.is_empty() {
+        anyhow::bail!(
+            "Configuration validation failed:\n  - {}",
+            errors.join("\n  - ")
+        );
+    }
+    Ok(())
+}
+
 /// Legacy function for compatibility, if needed
 pub fn parse_kconfigs<P: AsRef<Path>>(root: P) -> Result<Vec<ConfigItem>> {
     let tree = build_config_tree(root)?;
@@ -321,5 +367,113 @@ mod tests {
         assert_eq!(tree.children[0].path, "nested/deep");
 
         Ok(())
+    }
+
+    #[test]
+    fn test_validate_configs() {
+        let valid_configs = vec![
+            ConfigItem {
+                name: "CONFIG_A".to_string(),
+                config_type: ConfigType::Bool,
+                default: None,
+                desc: "".to_string(),
+                depends_on: None,
+                help: None,
+                options: None,
+                feature: None,
+                range: None,
+                regex: None,
+                rust_type: None,
+            },
+            ConfigItem {
+                name: "CONFIG_B".to_string(),
+                config_type: ConfigType::Bool,
+                default: None,
+                desc: "".to_string(),
+                depends_on: None,
+                help: None,
+                options: None,
+                feature: None,
+                range: None,
+                regex: None,
+                rust_type: None,
+            },
+        ];
+        assert!(validate_configs(&valid_configs).is_ok());
+
+        let duplicate_configs = vec![
+            ConfigItem {
+                name: "CONFIG_A".to_string(),
+                config_type: ConfigType::Bool,
+                default: None,
+                desc: "".to_string(),
+                depends_on: None,
+                help: None,
+                options: None,
+                feature: None,
+                range: None,
+                regex: None,
+                rust_type: None,
+            },
+            ConfigItem {
+                name: "CONFIG_A".to_string(),
+                config_type: ConfigType::Bool,
+                default: None,
+                desc: "".to_string(),
+                depends_on: None,
+                help: None,
+                options: None,
+                feature: None,
+                range: None,
+                regex: None,
+                rust_type: None,
+            },
+        ];
+        assert!(validate_configs(&duplicate_configs).is_err());
+
+        let reserved_configs = vec![ConfigItem {
+            name: "ANAXA_BUILDER_VERSION".to_string(),
+            config_type: ConfigType::Bool,
+            default: None,
+            desc: "".to_string(),
+            depends_on: None,
+            help: None,
+            options: None,
+            feature: None,
+            range: None,
+            regex: None,
+            rust_type: None,
+        }];
+        assert!(validate_configs(&reserved_configs).is_err());
+
+        let invalid_default = vec![ConfigItem {
+            name: "INVALID_DEFAULT".to_string(),
+            config_type: ConfigType::Bool,
+            default: Some(toml::Value::Integer(123)),
+            desc: "".to_string(),
+            depends_on: None,
+            help: None,
+            options: None,
+            feature: None,
+            range: None,
+            regex: None,
+            rust_type: None,
+        }];
+        assert!(validate_configs(&invalid_default).is_err());
+
+        let invalid_choice = vec![ConfigItem {
+            name: "EMPTY_CHOICE".to_string(),
+            config_type: ConfigType::Choice,
+            default: None,
+            desc: "".to_string(),
+            depends_on: None,
+            help: None,
+            options: Some(vec![]),
+            feature: None,
+            range: None,
+            regex: None,
+            rust_type: None,
+        }];
+        assert!(validate_configs(&invalid_choice).is_err());
     }
 }

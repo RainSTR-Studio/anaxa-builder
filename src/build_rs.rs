@@ -35,6 +35,7 @@ impl BuildHelper {
         check_version_compatibility()?;
         let tree = parser::build_config_tree(&self.kconfig_dir)?;
         let configs = parser::flatten_configs(&tree);
+        parser::validate_configs(&configs)?;
         let values = config_io::load_config(&self.config_file, &configs)?;
 
         let out_path = self.out_dir.join("config.rs");
@@ -87,6 +88,7 @@ where
 
     let tree = parser::build_config_tree(kconfig_dir)?;
     let configs = parser::flatten_configs(&tree);
+    parser::validate_configs(&configs)?;
 
     let values = config_io::load_config(config_file, &configs)?;
 
