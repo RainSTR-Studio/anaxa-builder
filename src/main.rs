@@ -12,7 +12,7 @@ struct Cli {
     command: Commands,
 
     /// Source directory containing Kconfig.toml files
-    #[arg(short, long, default_value = "src", global = true)]
+    #[arg(short, long, default_value = ".", global = true)]
     dir: PathBuf,
 }
 

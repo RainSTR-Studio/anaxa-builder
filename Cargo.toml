@@ -1,9 +1,9 @@
 [package]
 name = "anaxa-builder"
 description = "A modern native Rust configuration management system"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
-authors = ["<moyan> <me@moyanjdc.top>"]
+authors = ["<moyan> <me@moyanjdc.top>", "<zhangxuan2011> <zx20110412@outlook.com>"]
 license = "MIT"
 repository = "https://github.com/RainSTR-Studio/anaxa-builder"
 categories = [
