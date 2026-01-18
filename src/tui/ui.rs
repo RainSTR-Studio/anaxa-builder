@@ -47,6 +47,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         }
     }
 
+    if app.ui.show_search {
+        draw_search_popup(f, app);
+    }
+
     if let Some(msg) = &app.ui.notification {
         draw_notification(f, msg);
     }
@@ -214,6 +218,64 @@ fn draw_choice_popup(f: &mut Frame, app: &mut App) {
     }
 }
 
+fn draw_search_popup(f: &mut Frame, app: &mut App) {
+    let area = centered_rect(70, 70, f.area());
+    f.render_widget(Clear, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(3), Constraint::Min(0)])
+        .split(area);
+
+    let search_block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Global Search ")
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let search_text = Paragraph::new(app.ui.search_query.as_str()).block(search_block);
+    f.render_widget(search_text, chunks[0]);
+
+    let results_block = Block::default()
+        .borders(Borders::ALL)
+        .title(format!(" Results ({}) ", app.ui.search_results.len()));
+
+    let items: Vec<ListItem> = app
+        .ui
+        .search_results
+        .iter()
+        .map(|(path, index)| {
+            let mut node = &app.root_node;
+            let mut path_str = vec![node.desc.clone()];
+            for &i in path {
+                node = &node.children[i];
+                path_str.push(node.desc.clone());
+            }
+            let config = &node.configs[*index];
+            ListItem::new(Line::from(vec![
+                Span::styled(
+                    format!("{:<30}", config.name),
+                    Style::default().fg(Color::White),
+                ),
+                Span::styled(
+                    format!(" [{}]", path_str.join(" > ")),
+                    Style::default().fg(Color::Gray),
+                ),
+            ]))
+        })
+        .collect();
+
+    let list = List::new(items)
+        .block(results_block)
+        .highlight_style(
+            Style::default()
+                .bg(Color::Indexed(237))
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol("▶ ");
+
+    f.render_stateful_widget(list, chunks[1], &mut app.ui.search_list_state);
+}
+
 fn draw_notification(f: &mut Frame, msg: &str) {
     let area = centered_rect(60, 20, f.area());
     f.render_widget(Clear, area);
@@ -262,7 +324,9 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
         .constraints([Constraint::Min(0), Constraint::Length(15)])
         .split(area);
 
-    let help_text = if app.ui.show_quit_confirm {
+    let help_text = if app.ui.show_search {
+        " [Enter] Jump to  [Esc] Close Search  [J/K] Navigate Results ".to_string()
+    } else if app.ui.show_quit_confirm {
         " [Y] Save & Quit  [N] Discard & Quit  [Esc] Stay ".to_string()
     } else if app.ui.notification.is_some() {
         " [Any Key] Close Notification ".to_string()
@@ -273,7 +337,8 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
             " [Enter] Confirm  [Esc] Cancel  [Backspace] Delete ".to_string()
         }
     } else {
-        let help_base = " [Enter] Enter  [Esc] Back  [Space] Edit  [S] Save  [?] Help  [Q] Quit ";
+        let help_base =
+            " [Enter] Enter  [Esc] Back  [Space] Edit  [/] Search  [S] Save  [?] Help  [Q] Quit ";
         if app.ui.show_help {
             format!("{} [J/K] Scroll Help ", help_base)
         } else {

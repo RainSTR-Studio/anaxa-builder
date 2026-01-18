@@ -37,6 +37,10 @@ pub struct UiState {
     pub show_help: bool,
     pub help_scroll: u16,
     pub editor: Option<Editor>,
+    pub show_search: bool,
+    pub search_query: String,
+    pub search_results: Vec<(Vec<usize>, usize)>, // (node_path, index_in_node)
+    pub search_list_state: ListState,
 }
 
 pub struct App {
@@ -78,6 +82,10 @@ impl App {
                 show_help: false,
                 help_scroll: 0,
                 editor: None,
+                show_search: false,
+                search_query: String::new(),
+                search_results: Vec::new(),
+                search_list_state: ListState::default(),
             },
         })
     }
@@ -318,6 +326,105 @@ impl App {
         self.ui.notification = None;
     }
 
+    pub fn perform_search(&mut self) {
+        self.ui.search_results.clear();
+        if self.ui.search_query.is_empty() {
+            self.ui.search_list_state.select(None);
+            return;
+        }
+
+        let query = self.ui.search_query.to_lowercase();
+        let mut results = Vec::new();
+        self.search_recursive(&self.root_node, &mut Vec::new(), &query, &mut results);
+        self.ui.search_results = results;
+        if !self.ui.search_results.is_empty() {
+            self.ui.search_list_state.select(Some(0));
+        } else {
+            self.ui.search_list_state.select(None);
+        }
+    }
+
+    fn search_recursive(
+        &self,
+        node: &ConfigNode,
+        current_path: &mut Vec<usize>,
+        query: &str,
+        results: &mut Vec<(Vec<usize>, usize)>,
+    ) {
+        for (i, config) in node.configs.iter().enumerate() {
+            if config.name.to_lowercase().contains(query)
+                || config.desc.to_lowercase().contains(query)
+            {
+                results.push((current_path.clone(), i));
+            }
+        }
+
+        for (i, child) in node.children.iter().enumerate() {
+            current_path.push(i);
+            self.search_recursive(child, current_path, query, results);
+            current_path.pop();
+        }
+    }
+
+    pub fn next_search_result(&mut self) {
+        if self.ui.search_results.is_empty() {
+            return;
+        }
+        let i = match self.ui.search_list_state.selected() {
+            Some(i) => {
+                if i >= self.ui.search_results.len() - 1 {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.ui.search_list_state.select(Some(i));
+    }
+
+    pub fn previous_search_result(&mut self) {
+        if self.ui.search_results.is_empty() {
+            return;
+        }
+        let i = match self.ui.search_list_state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    self.ui.search_results.len() - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.ui.search_list_state.select(Some(i));
+    }
+
+    pub fn jump_to_search_result(&mut self) {
+        if let Some(selected) = self.ui.search_list_state.selected() {
+            if let Some((path, index)) = self.ui.search_results.get(selected) {
+                self.ui.current_node_path = path.clone();
+                // We need to find the index in the VISIBLE items
+                // This is tricky because the index in search result is real index in node.configs
+                // But the TUI list shows visible configs then visible children.
+                let (visible_configs, _) = self.get_visible_items();
+                let config_name = &self.get_current_node().configs[*index].name;
+
+                if let Some(pos) = visible_configs.iter().position(|c| &c.name == config_name) {
+                    self.ui.list_state.select(Some(pos));
+                } else {
+                    // Item might be hidden by dependency, but we jumped to the parent node anyway
+                    self.ui.list_state.select(Some(0));
+                    self.notify(
+                        "Note: Target item is currently hidden by dependencies".to_string(),
+                    );
+                }
+
+                self.ui.show_search = false;
+            }
+        }
+    }
+
     pub fn help_scroll_up(&mut self) {
         if self.ui.help_scroll > 0 {
             self.ui.help_scroll -= 1;
@@ -379,9 +486,27 @@ impl App {
 
     pub fn handle_action(&mut self, action: Action) -> bool {
         match action {
-            Action::Next => self.next(),
-            Action::Previous => self.previous(),
-            Action::Enter => self.enter(),
+            Action::Next => {
+                if self.ui.show_search {
+                    self.next_search_result();
+                } else {
+                    self.next();
+                }
+            }
+            Action::Previous => {
+                if self.ui.show_search {
+                    self.previous_search_result();
+                } else {
+                    self.previous();
+                }
+            }
+            Action::Enter => {
+                if self.ui.show_search {
+                    self.jump_to_search_result();
+                } else {
+                    self.enter();
+                }
+            }
             Action::Back => self.back(),
             Action::ToggleBool => self.toggle_bool(),
             Action::SubmitChoice => self.submit_choice(),
@@ -390,12 +515,18 @@ impl App {
             Action::SubmitInput => self.submit_input(),
             Action::CancelInput => self.cancel_input(),
             Action::InputChar(c) => {
-                if let Some(editor) = &mut self.ui.editor {
+                if self.ui.show_search {
+                    self.ui.search_query.push(c);
+                    self.perform_search();
+                } else if let Some(editor) = &mut self.ui.editor {
                     editor.input.push(c);
                 }
             }
             Action::Backspace => {
-                if let Some(editor) = &mut self.ui.editor {
+                if self.ui.show_search {
+                    self.ui.search_query.pop();
+                    self.perform_search();
+                } else if let Some(editor) = &mut self.ui.editor {
                     editor.input.pop();
                 }
             }
@@ -419,6 +550,16 @@ impl App {
             Action::HelpScrollUp => self.help_scroll_up(),
             Action::HelpScrollDown => self.help_scroll_down(),
             Action::ClearNotification => self.clear_notification(),
+            Action::ToggleSearch => {
+                if self.ui.show_search {
+                    self.ui.show_search = false;
+                } else {
+                    self.ui.show_search = true;
+                    self.ui.search_query.clear();
+                    self.ui.search_results.clear();
+                    self.ui.search_list_state.select(None);
+                }
+            }
         }
         false
     }

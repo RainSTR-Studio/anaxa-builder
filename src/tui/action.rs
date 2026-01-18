@@ -20,4 +20,5 @@ pub enum Action {
     HelpScrollUp,
     HelpScrollDown,
     ClearNotification,
+    ToggleSearch,
 }

@@ -51,6 +51,18 @@ fn handle_key_event(app: &App, code: KeyCode) -> Option<Action> {
         };
     }
 
+    if app.ui.show_search {
+        match code {
+            KeyCode::Enter => return Some(Action::Enter),
+            KeyCode::Esc => return Some(Action::ToggleSearch),
+            KeyCode::Down | KeyCode::Char('j') => return Some(Action::Next),
+            KeyCode::Up | KeyCode::Char('k') => return Some(Action::Previous),
+            KeyCode::Backspace => return Some(Action::Backspace),
+            KeyCode::Char(c) => return Some(Action::InputChar(c)),
+            _ => return None,
+        }
+    }
+
     if let Some(editor) = &app.ui.editor {
         let is_choice = editor.config.config_type == crate::schema::ConfigType::Choice;
         if is_choice {
@@ -80,6 +92,7 @@ fn handle_key_event(app: &App, code: KeyCode) -> Option<Action> {
         KeyCode::Esc | KeyCode::Left => Some(Action::Back),
         KeyCode::Char(' ') => Some(Action::ToggleBool),
         KeyCode::Char('s') => Some(Action::Save),
+        KeyCode::Char('/') => Some(Action::ToggleSearch),
         KeyCode::Char('?') => Some(Action::ToggleHelp),
         KeyCode::PageUp | KeyCode::Char('K') => Some(Action::HelpScrollUp),
         KeyCode::PageDown | KeyCode::Char('J') => Some(Action::HelpScrollDown),
