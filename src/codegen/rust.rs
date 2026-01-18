@@ -15,12 +15,14 @@ pub fn generate_consts(
     for item in items {
         if let Some(val) = values.get(&item.name) {
             if let Some(formatted) = item.config_type.format_value_rust(val) {
+                let rust_type = item
+                    .rust_type
+                    .as_deref()
+                    .unwrap_or_else(|| item.config_type.rust_type());
                 writeln!(
                     buffer,
                     "#[allow(dead_code)]\npub const {}: {} = {};",
-                    item.name,
-                    item.config_type.rust_type(),
-                    formatted
+                    item.name, rust_type, formatted
                 )?;
             }
         }
@@ -66,6 +68,7 @@ mod tests {
                 feature: None,
                 range: None,
                 regex: None,
+                rust_type: None,
             },
             ConfigItem {
                 name: "STR_VAL".to_string(),
@@ -78,6 +81,7 @@ mod tests {
                 feature: None,
                 range: None,
                 regex: None,
+                rust_type: None,
             },
         ];
 
@@ -95,6 +99,30 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_rust_custom_type() -> Result<()> {
+        let items = vec![ConfigItem {
+            name: "MAX_VAL".to_string(),
+            config_type: ConfigType::Int,
+            default: None,
+            desc: "Max".to_string(),
+            depends_on: None,
+            help: None,
+            options: None,
+            feature: None,
+            range: None,
+            regex: None,
+            rust_type: Some("usize".to_string()),
+        }];
+
+        let mut values = HashMap::new();
+        values.insert("MAX_VAL".to_string(), toml::Value::Integer(100));
+
+        let code = generate_consts(&items, &values)?;
+        assert!(code.contains("pub const MAX_VAL: usize = 100;"));
+        Ok(())
+    }
+
+    #[test]
     fn test_generate_rust_cfgs() -> Result<()> {
         let items = vec![ConfigItem {
             name: "ENABLE_A".to_string(),
@@ -107,6 +135,7 @@ mod tests {
             feature: None,
             range: None,
             regex: None,
+            rust_type: None,
         }];
 
         let mut values = HashMap::new();

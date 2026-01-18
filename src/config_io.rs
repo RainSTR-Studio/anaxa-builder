@@ -91,6 +91,7 @@ mod tests {
                 feature: None,
                 range: None,
                 regex: None,
+                rust_type: None,
             },
             ConfigItem {
                 name: "B".to_string(),
@@ -103,6 +104,7 @@ mod tests {
                 feature: None,
                 range: None,
                 regex: None,
+                rust_type: None,
             },
         ];
 
@@ -133,6 +135,7 @@ mod tests {
             feature: None,
             range: None,
             regex: None,
+            rust_type: None,
         }];
 
         let mut values = HashMap::new();

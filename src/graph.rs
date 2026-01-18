@@ -76,6 +76,7 @@ mod tests {
             feature: None,
             range: None,
             regex: None,
+            rust_type: None,
         }
     }
 

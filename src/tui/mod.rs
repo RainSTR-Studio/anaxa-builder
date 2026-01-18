@@ -517,6 +517,7 @@ mod tests {
                 feature: None,
                 range: None,
                 regex: None,
+                rust_type: None,
             }],
             children: vec![ConfigNode {
                 desc: "Child".to_string(),

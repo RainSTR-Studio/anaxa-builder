@@ -53,6 +53,7 @@ mod tests {
                 feature: None,
                 range: None,
                 regex: None,
+                rust_type: None,
             },
             ConfigItem {
                 name: "MAX_B".to_string(),
@@ -65,6 +66,7 @@ mod tests {
                 feature: None,
                 range: None,
                 regex: None,
+                rust_type: None,
             },
         ];
 

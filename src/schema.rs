@@ -61,6 +61,7 @@ pub struct ConfigItem {
     pub feature: Option<Vec<String>>,
     pub range: Option<(i64, i64)>,
     pub regex: Option<String>,
+    pub rust_type: Option<String>,
 }
 
 impl ConfigItem {
@@ -84,6 +85,75 @@ impl ConfigItem {
                             "Config '{}' value {} out of range [{}, {}]",
                             self.name, val, min, max
                         ));
+                    }
+                }
+                if let Some(rt) = &self.rust_type {
+                    match rt.as_str() {
+                        "u8" => {
+                            if val < 0 || val > u8::MAX as i64 {
+                                return Err(format!(
+                                    "Config '{}' value {} exceeds u8 range",
+                                    self.name, val
+                                ));
+                            }
+                        }
+                        "i8" => {
+                            if val < i8::MIN as i64 || val > i8::MAX as i64 {
+                                return Err(format!(
+                                    "Config '{}' value {} exceeds i8 range",
+                                    self.name, val
+                                ));
+                            }
+                        }
+                        "u16" => {
+                            if val < 0 || val > u16::MAX as i64 {
+                                return Err(format!(
+                                    "Config '{}' value {} exceeds u16 range",
+                                    self.name, val
+                                ));
+                            }
+                        }
+                        "i16" => {
+                            if val < i16::MIN as i64 || val > i16::MAX as i64 {
+                                return Err(format!(
+                                    "Config '{}' value {} exceeds i16 range",
+                                    self.name, val
+                                ));
+                            }
+                        }
+                        "u32" => {
+                            if val < 0 || val > u32::MAX as i64 {
+                                return Err(format!(
+                                    "Config '{}' value {} exceeds u32 range",
+                                    self.name, val
+                                ));
+                            }
+                        }
+                        "i32" => {
+                            if val < i32::MIN as i64 || val > i32::MAX as i64 {
+                                return Err(format!(
+                                    "Config '{}' value {} exceeds i32 range",
+                                    self.name, val
+                                ));
+                            }
+                        }
+                        "u64" => {
+                            if val < 0 {
+                                return Err(format!(
+                                    "Config '{}' value {} cannot be negative for u64",
+                                    self.name, val
+                                ));
+                            }
+                        }
+                        "usize" => {
+                            if val < 0 {
+                                return Err(format!(
+                                    "Config '{}' value {} cannot be negative for usize",
+                                    self.name, val
+                                ));
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -177,6 +247,7 @@ mod tests {
             feature: None,
             range: Some((1, 65535)),
             regex: None,
+            rust_type: None,
         };
 
         assert!(item.validate(&Value::Integer(80)).is_ok());
@@ -194,6 +265,7 @@ mod tests {
             feature: None,
             range: None,
             regex: Some(r"^[a-z]+$".to_string()),
+            rust_type: None,
         };
 
         assert!(item_re
@@ -203,6 +275,33 @@ mod tests {
             .validate(&Value::String("HELLO".to_string()))
             .is_err());
         assert!(item_re.validate(&Value::String("123".to_string())).is_err());
+    }
+
+    #[test]
+    fn test_rust_type_validation() {
+        let mut item = ConfigItem {
+            name: "VAL".to_string(),
+            config_type: ConfigType::Int,
+            default: None,
+            desc: "Val".to_string(),
+            depends_on: None,
+            help: None,
+            options: None,
+            feature: None,
+            range: None,
+            regex: None,
+            rust_type: Some("u8".to_string()),
+        };
+
+        assert!(item.validate(&Value::Integer(255)).is_ok());
+        assert!(item.validate(&Value::Integer(256)).is_err());
+        assert!(item.validate(&Value::Integer(-1)).is_err());
+
+        item.rust_type = Some("i8".to_string());
+        assert!(item.validate(&Value::Integer(127)).is_ok());
+        assert!(item.validate(&Value::Integer(128)).is_err());
+        assert!(item.validate(&Value::Integer(-128)).is_ok());
+        assert!(item.validate(&Value::Integer(-129)).is_err());
     }
 }
 

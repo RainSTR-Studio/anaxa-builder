@@ -117,6 +117,7 @@ mod tests {
             feature: None,
             range: None,
             regex: None,
+            rust_type: None,
         };
         let item2 = ConfigItem {
             name: "B".to_string(),
@@ -129,6 +130,7 @@ mod tests {
             feature: None,
             range: None,
             regex: None,
+            rust_type: None,
         };
 
         let root = ConfigNode {
@@ -188,6 +190,22 @@ mod tests {
         assert_eq!(tree.children[0].configs.len(), 1);
         assert_eq!(tree.children[0].configs[0].name, "SUB_OPT");
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_rust_type() -> Result<()> {
+        let kconfig = r#"
+            [[config]]
+            name = "MAX_VAL"
+            type = "int"
+            default = 100
+            desc = "Max"
+            rust_type = "usize"
+        "#;
+        let parsed: KconfigFile = toml::from_str(kconfig)?;
+        let configs = parsed.configs.unwrap();
+        assert_eq!(configs[0].rust_type, Some("usize".to_string()));
         Ok(())
     }
 }
