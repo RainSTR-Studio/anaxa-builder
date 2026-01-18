@@ -2,14 +2,31 @@ use crate::schema::{ConfigItem, ConfigNode, KconfigFile};
 use anyhow::{Context, Result};
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use walkdir::WalkDir;
+
+/// Normalize a path by resolving . and .. components
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut result = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                result.pop();
+            }
+            _ => result.push(component.as_os_str()),
+        }
+    }
+    result
+}
 
 /// Recursively scans the given root directory for `Kconfig.toml` files
 /// and builds a hierarchical `ConfigNode` tree.
 pub fn build_config_tree<P: AsRef<Path>>(root: P) -> Result<ConfigNode> {
     let root_path = root.as_ref().canonicalize()?;
     let mut nodes: BTreeMap<PathBuf, ConfigNode> = BTreeMap::new();
+    // Map from child path to explicit parent path
+    let mut explicit_links: BTreeMap<PathBuf, PathBuf> = BTreeMap::new();
 
     for entry in WalkDir::new(&root_path)
         .follow_links(true)
@@ -18,7 +35,8 @@ pub fn build_config_tree<P: AsRef<Path>>(root: P) -> Result<ConfigNode> {
     {
         if entry.file_name() == "Kconfig.toml" {
             let path = entry.path();
-            let rel_path = path.parent().unwrap().strip_prefix(&root_path)?;
+            let parent_dir = path.parent().unwrap();
+            let rel_path = parent_dir.strip_prefix(&root_path)?.to_path_buf();
 
             let content = fs::read_to_string(path)
                 .with_context(|| format!("Failed to read config file: {:?}", path))?;
@@ -26,13 +44,28 @@ pub fn build_config_tree<P: AsRef<Path>>(root: P) -> Result<ConfigNode> {
             let kconfig: KconfigFile = toml::from_str(&content)
                 .with_context(|| format!("Failed to parse TOML structure in: {:?}", path))?;
 
+            // Handle explicit menu links
+            if let Some(menu) = &kconfig.menu {
+                for (_key, target_str) in menu {
+                    let mut target_path = rel_path.join(target_str);
+
+                    // Allow pointing to the file or the directory
+                    if target_path.file_name() == Some(std::ffi::OsStr::new("Kconfig.toml")) {
+                        target_path.pop();
+                    }
+
+                    let normalized_target = normalize_path(&target_path);
+                    explicit_links.insert(normalized_target, rel_path.clone());
+                }
+            }
+
             let desc = kconfig
                 .title
                 .clone()
                 .unwrap_or_else(|| rel_path.to_string_lossy().into_owned());
 
             nodes.insert(
-                rel_path.to_path_buf(),
+                rel_path.clone(),
                 ConfigNode {
                     desc,
                     help: kconfig.help.clone(),
@@ -59,21 +92,29 @@ pub fn build_config_tree<P: AsRef<Path>>(root: P) -> Result<ConfigNode> {
         let current_node = nodes.remove(&path).unwrap();
 
         // Find parent
-        let mut parent_path = path.parent().unwrap_or(Path::new("")).to_path_buf();
-        while !parent_path.as_os_str().is_empty() && !nodes.contains_key(&parent_path) {
-            parent_path = parent_path.parent().unwrap_or(Path::new("")).to_path_buf();
-        }
+        // Priority: Explicit link > Implicit directory parent
+        let parent_path = if let Some(explicit_parent) = explicit_links.get(&path) {
+            explicit_parent.clone()
+        } else {
+            let mut p = path.parent().unwrap_or(Path::new("")).to_path_buf();
+            while !p.as_os_str().is_empty() && !nodes.contains_key(&p) {
+                p = p.parent().unwrap_or(Path::new("")).to_path_buf();
+            }
+            p
+        };
 
         if let Some(parent_node) = nodes.get_mut(&parent_path) {
             parent_node.children.push(current_node);
         } else if parent_path.as_os_str().is_empty() && nodes.contains_key(&PathBuf::new()) {
+            // Fallback: attach to root if parent is empty and root exists
             nodes
                 .get_mut(&PathBuf::new())
                 .unwrap()
                 .children
                 .push(current_node);
         } else {
-            // If no parent found, it's effectively a root-level child or we need to create a root
+            // If no parent found (and not explicitly linked to a valid node),
+            // put it back or keep it isolated (effectively invisible in this tree logic unless it IS root)
             nodes.insert(path, current_node);
         }
     }
@@ -209,6 +250,44 @@ mod tests {
         let parsed: KconfigFile = toml::from_str(kconfig)?;
         let configs = parsed.configs.unwrap();
         assert_eq!(configs[0].rust_type, Some("usize".to_string()));
+        Ok(())
+    }
+
+    #[test]
+    fn test_explicit_menu_mapping() -> Result<()> {
+        let dir = tempdir()?;
+        let root_path = dir.path();
+
+        // root Kconfig with menu mapping
+        let root_kconfig = r#"
+            title = "Root"
+            [menu]
+            nested = "nested/deep"
+        "#;
+        fs::write(root_path.join("Kconfig.toml"), root_kconfig)?;
+
+        // nested/deep directory (skipping intermediate 'nested' kconfig if it existed)
+        let deep_path = root_path.join("nested/deep");
+        fs::create_dir_all(&deep_path)?;
+
+        let deep_kconfig = r#"
+            title = "Deeply Nested"
+            [[config]]
+            name = "DEEP_OPT"
+            type = "bool"
+            default = true
+            desc = "Deep option"
+        "#;
+        fs::write(deep_path.join("Kconfig.toml"), deep_kconfig)?;
+
+        let tree = build_config_tree(root_path)?;
+
+        assert_eq!(tree.desc, "Root");
+        // Should have 'Deeply Nested' as direct child because of explicit mapping
+        assert_eq!(tree.children.len(), 1);
+        assert_eq!(tree.children[0].desc, "Deeply Nested");
+        assert_eq!(tree.children[0].path, "nested/deep");
+
         Ok(())
     }
 }

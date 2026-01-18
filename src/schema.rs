@@ -319,6 +319,7 @@ pub struct KconfigFile {
     pub depends_on: Option<String>,
     #[serde(rename = "config")]
     pub configs: Option<Vec<ConfigItem>>,
+    pub menu: Option<std::collections::BTreeMap<String, String>>,
 }
 
 /// Represents a node in the configuration hierarchy
