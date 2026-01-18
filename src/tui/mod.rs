@@ -381,8 +381,36 @@ impl App {
     }
 
     pub fn handle_event(&mut self, event: Event) -> io::Result<bool> {
-        if let Event::Key(key) = event {
-            return self.handle_key_event(key);
+        match event {
+            Event::Key(key) => self.handle_key_event(key),
+            Event::Mouse(mouse) => self.handle_mouse_event(mouse),
+            _ => Ok(false),
+        }
+    }
+
+    fn handle_mouse_event(&mut self, mouse: event::MouseEvent) -> io::Result<bool> {
+        match mouse.kind {
+            event::MouseEventKind::ScrollUp => {
+                if self.ui.show_help {
+                    self.help_scroll_up();
+                } else {
+                    self.previous();
+                }
+            }
+            event::MouseEventKind::ScrollDown => {
+                if self.ui.show_help {
+                    self.help_scroll_down();
+                } else {
+                    self.next();
+                }
+            }
+            event::MouseEventKind::Down(event::MouseButton::Left) => {
+                if self.ui.notification.is_some() {
+                    self.clear_notification();
+                }
+            }
+
+            _ => {}
         }
         Ok(false)
     }
