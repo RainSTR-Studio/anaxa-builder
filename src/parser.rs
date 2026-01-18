@@ -1,22 +1,31 @@
 use crate::schema::{ConfigItem, ConfigNode, KconfigFile};
 use anyhow::{Context, Result};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-/// Normalize a path by resolving . and .. components
-fn normalize_path(path: &Path) -> PathBuf {
+/// Calculate relative path from base to path (handling .. if needed)
+fn diff_paths(path: &Path, base: &Path) -> PathBuf {
+    let path_comps: Vec<_> = path.components().collect();
+    let base_comps: Vec<_> = base.components().collect();
+
+    let min_len = path_comps.len().min(base_comps.len());
+    let mut common_len = 0;
+    while common_len < min_len && path_comps[common_len] == base_comps[common_len] {
+        common_len += 1;
+    }
+
     let mut result = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                result.pop();
-            }
-            _ => result.push(component.as_os_str()),
+    if common_len < base_comps.len() {
+        for _ in 0..(base_comps.len() - common_len) {
+            result.push("..");
         }
     }
+    for i in common_len..path_comps.len() {
+        result.push(path_comps[i].as_os_str());
+    }
+
     result
 }
 
@@ -28,53 +37,76 @@ pub fn build_config_tree<P: AsRef<Path>>(root: P) -> Result<ConfigNode> {
     // Map from child path to explicit parent path
     let mut explicit_links: BTreeMap<PathBuf, PathBuf> = BTreeMap::new();
 
-    for entry in WalkDir::new(&root_path)
-        .follow_links(true)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
-        if entry.file_name() == "Kconfig.toml" {
-            let path = entry.path();
-            let parent_dir = path.parent().unwrap();
-            let rel_path = parent_dir.strip_prefix(&root_path)?.to_path_buf();
+    let mut queue = VecDeque::new();
+    queue.push_back(root_path.clone());
 
-            let content = fs::read_to_string(path)
-                .with_context(|| format!("Failed to read config file: {:?}", path))?;
+    let mut scanned_roots = HashSet::new();
 
-            let kconfig: KconfigFile = toml::from_str(&content)
-                .with_context(|| format!("Failed to parse TOML structure in: {:?}", path))?;
+    while let Some(scan_root) = queue.pop_front() {
+        if scanned_roots.iter().any(|r| scan_root.starts_with(r)) {
+            continue;
+        }
+        scanned_roots.insert(scan_root.clone());
 
-            // Handle explicit menu links
-            if let Some(menu) = &kconfig.menu {
-                for (_key, target_str) in menu {
-                    let mut target_path = rel_path.join(target_str);
+        for entry in WalkDir::new(&scan_root)
+            .follow_links(true)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            if entry.file_name() == "Kconfig.toml" {
+                let path = entry.path();
+                let abs_path = path.canonicalize().unwrap_or(path.to_path_buf());
+                let parent_dir = abs_path.parent().unwrap();
 
-                    // Allow pointing to the file or the directory
-                    if target_path.file_name() == Some(std::ffi::OsStr::new("Kconfig.toml")) {
-                        target_path.pop();
-                    }
+                let rel_path = diff_paths(parent_dir, &root_path);
 
-                    let normalized_target = normalize_path(&target_path);
-                    explicit_links.insert(normalized_target, rel_path.clone());
+                if nodes.contains_key(&rel_path) {
+                    continue;
                 }
+
+                let content = fs::read_to_string(&abs_path)
+                    .with_context(|| format!("Failed to read config file: {:?}", abs_path))?;
+
+                let kconfig: KconfigFile = toml::from_str(&content).with_context(|| {
+                    format!("Failed to parse TOML structure in: {:?}", abs_path)
+                })?;
+
+                if let Some(menu) = &kconfig.menu {
+                    for (_key, target_str) in menu {
+                        let mut target_path = parent_dir.join(target_str);
+
+                        if target_path.file_name() == Some(std::ffi::OsStr::new("Kconfig.toml")) {
+                            target_path.pop();
+                        }
+
+                        if let Ok(canon_target) = target_path.canonicalize() {
+                            if !scanned_roots.iter().any(|r| canon_target.starts_with(r)) {
+                                queue.push_back(canon_target.clone());
+                            }
+
+                            let child_rel = diff_paths(&canon_target, &root_path);
+                            explicit_links.insert(child_rel, rel_path.clone());
+                        }
+                    }
+                }
+
+                let desc = kconfig
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| rel_path.to_string_lossy().into_owned());
+
+                nodes.insert(
+                    rel_path.clone(),
+                    ConfigNode {
+                        desc,
+                        help: kconfig.help.clone(),
+                        configs: kconfig.configs.unwrap_or_default(),
+                        children: Vec::new(),
+                        path: rel_path.to_string_lossy().into_owned(),
+                        depends_on: kconfig.depends_on.clone(),
+                    },
+                );
             }
-
-            let desc = kconfig
-                .title
-                .clone()
-                .unwrap_or_else(|| rel_path.to_string_lossy().into_owned());
-
-            nodes.insert(
-                rel_path.clone(),
-                ConfigNode {
-                    desc,
-                    help: kconfig.help.clone(),
-                    configs: kconfig.configs.unwrap_or_default(),
-                    children: Vec::new(),
-                    path: rel_path.to_string_lossy().into_owned(),
-                    depends_on: kconfig.depends_on.clone(),
-                },
-            );
         }
     }
 
