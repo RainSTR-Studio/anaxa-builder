@@ -1,3 +1,5 @@
+mod tui;
+
 use anaxa_builder::{graph, parser};
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -124,7 +126,7 @@ fn main() -> Result<()> {
         }
         Commands::Menuconfig { config } => {
             let tree = parser::build_config_tree(dir)?;
-            anaxa_builder::tui::run(tree, config.clone())?;
+            tui::run(tree, config.clone())?;
         }
         Commands::Generate {
             out,

@@ -1,10 +1,25 @@
 [package]
 name = "cargo-anaxa"
 version = "0.4.0"
-edition = "2024"
+edition = "2021"
+authors = [
+    "<moyan> <me@moyanjdc.top>",
+    "<zhangxuan2011> <zx20110412@outlook.com>",
+]
+license = "MIT"
+repository = "https://github.com/RainSTR-Studio/anaxa-builder"
+categories = [
+    "command-line-utilities",
+    "development-tools",
+    "config",
+    "development-tools::cargo-plugins",
+    "development-tools::build-utils",
+]
 
 [dependencies]
-anaxa-builder = "0.4.0"
+anaxa-builder = "^0.4.0"
 clap = { version = "4.5.54", features = ["derive"] }
 toml = "0.9.11"
 anyhow = "1.0.100"
+ratatui = "0.29.0"
+crossterm = { version = "0.28.1", features = ["event-stream"] }

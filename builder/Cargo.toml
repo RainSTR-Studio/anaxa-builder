@@ -9,13 +9,7 @@ authors = [
 ]
 license = "MIT"
 repository = "https://github.com/RainSTR-Studio/anaxa-builder"
-categories = [
-    "command-line-utilities",
-    "development-tools",
-    "config",
-    "development-tools::cargo-plugins",
-    "development-tools::build-utils",
-]
+categories = ["development-tools", "config", "development-tools::build-utils"]
 
 [dependencies]
 anyhow = "1.0.100"
@@ -25,8 +19,6 @@ serde = { version = "1.0.228", features = ["derive"] }
 thiserror = "2.0.17"
 toml = "0.9.11"
 walkdir = "2.5.0"
-ratatui = "0.29.0"
-crossterm = { version = "0.28.1", features = ["event-stream"] }
 regex = "1.11.1"
 
 [dev-dependencies]
