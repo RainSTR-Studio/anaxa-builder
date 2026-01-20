@@ -33,6 +33,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "anaxa-builder"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71af9903d651c13a19880ee93f66eb2ed339f765c29ca6a7b49799f93431f90a"
+dependencies = [
+ "anyhow",
+ "evalexpr",
+ "petgraph",
+ "regex",
+ "serde",
+ "thiserror",
+ "toml",
+ "walkdir",
+]
+
+[[package]]
 name = "anstream"
 version = "0.6.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -98,7 +114,7 @@ checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
 name = "cargo-anaxa"
 version = "0.4.2"
 dependencies = [
- "anaxa-builder",
+ "anaxa-builder 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "anyhow",
  "clap",
  "crossterm",
