@@ -15,6 +15,7 @@ categories = [
     "development-tools::cargo-plugins",
     "development-tools::build-utils",
 ]
+readme = "../README.md"
 
 [dependencies]
 anaxa-builder = "0"

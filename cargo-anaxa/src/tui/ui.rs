@@ -38,7 +38,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             .ui
             .editor
             .as_ref()
-            .map(|e| e.config.config_type == crate::schema::ConfigType::Choice)
+            .map(|e| e.config.config_type == anaxa_builder::schema::ConfigType::Choice)
             .unwrap_or(false);
         if is_choice {
             draw_choice_popup(f, app);
@@ -340,7 +340,7 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
     } else if app.ui.notification.is_some() {
         " [Any Key] Close Notification ".to_string()
     } else if let Some(editor) = &app.ui.editor {
-        if editor.config.config_type == crate::schema::ConfigType::Choice {
+        if editor.config.config_type == anaxa_builder::schema::ConfigType::Choice {
             " [Enter] Select  [Esc] Cancel  [J/K] Navigate ".to_string()
         } else {
             " [Enter] Confirm  [Esc] Cancel  [Backspace] Delete ".to_string()

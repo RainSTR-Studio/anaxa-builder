@@ -50,7 +50,7 @@ pub struct App {
     pub should_quit: bool,
     pub flattened_items: Vec<ConfigItem>,
     pub is_dirty: bool,
-    pub evaluator: crate::evaluator::Evaluator,
+    pub evaluator: anaxa_builder::evaluator::Evaluator,
     pub ui: UiState,
 }
 
@@ -61,7 +61,7 @@ impl App {
         let mut list_state = ListState::default();
         list_state.select(Some(0));
 
-        let mut evaluator = crate::evaluator::Evaluator::new();
+        let mut evaluator = anaxa_builder::evaluator::Evaluator::new();
         for (name, val) in &values {
             let _ = evaluator.set_variable(name, val);
         }
@@ -224,7 +224,7 @@ impl App {
 
         if let Some(config) = config {
             match config.config_type {
-                crate::schema::ConfigType::Bool => {
+                anaxa_builder::schema::ConfigType::Bool => {
                     let current_val = self
                         .values
                         .get(&config.name)
@@ -235,9 +235,9 @@ impl App {
                     self.is_dirty = true;
                     self.update_evaluator();
                 }
-                crate::schema::ConfigType::Int
-                | crate::schema::ConfigType::Hex
-                | crate::schema::ConfigType::String => {
+                anaxa_builder::schema::ConfigType::Int
+                | anaxa_builder::schema::ConfigType::Hex
+                | anaxa_builder::schema::ConfigType::String => {
                     let input = self
                         .values
                         .get(&config.name)
@@ -253,7 +253,7 @@ impl App {
                         choice_state: ListState::default(),
                     });
                 }
-                crate::schema::ConfigType::Choice => {
+                anaxa_builder::schema::ConfigType::Choice => {
                     let mut choice_state = ListState::default();
                     choice_state.select(Some(0));
                     self.ui.editor = Some(Editor {
@@ -439,14 +439,14 @@ impl App {
         if let Some(editor) = self.ui.editor.take() {
             let config = editor.config;
             let value = match config.config_type {
-                crate::schema::ConfigType::Int => match editor.input.parse::<i64>() {
+                anaxa_builder::schema::ConfigType::Int => match editor.input.parse::<i64>() {
                     Ok(i) => Some(Value::Integer(i)),
                     Err(_) => {
                         self.notify("Invalid integer".to_string());
                         None
                     }
                 },
-                crate::schema::ConfigType::Hex => {
+                anaxa_builder::schema::ConfigType::Hex => {
                     let res = if editor.input.starts_with("0x") || editor.input.starts_with("0X") {
                         i64::from_str_radix(&editor.input[2..], 16)
                     } else {
@@ -460,7 +460,9 @@ impl App {
                         }
                     }
                 }
-                crate::schema::ConfigType::String => Some(Value::String(editor.input.clone())),
+                anaxa_builder::schema::ConfigType::String => {
+                    Some(Value::String(editor.input.clone()))
+                }
                 _ => None,
             };
 

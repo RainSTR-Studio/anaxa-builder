@@ -64,7 +64,7 @@ fn handle_key_event(app: &App, code: KeyCode) -> Option<Action> {
     }
 
     if let Some(editor) = &app.ui.editor {
-        let is_choice = editor.config.config_type == crate::schema::ConfigType::Choice;
+        let is_choice = editor.config.config_type == anaxa_builder::schema::ConfigType::Choice;
         if is_choice {
             match code {
                 KeyCode::Enter => return Some(Action::SubmitChoice),
