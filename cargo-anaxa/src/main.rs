@@ -1,6 +1,6 @@
 mod tui;
 
-use anaxa_builder::{graph, parser};
+use anaxa_builder::internal::{graph, parser};
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
