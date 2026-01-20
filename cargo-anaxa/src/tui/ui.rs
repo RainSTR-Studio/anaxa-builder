@@ -1,5 +1,5 @@
-use crate::schema::ConfigType;
 use crate::tui::App;
+use anaxa_builder::schema::ConfigType;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
