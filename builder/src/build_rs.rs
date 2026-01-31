@@ -50,8 +50,10 @@ impl BuildHelper {
             if let Some(val) = values.get(&item.name) {
                 if val.as_bool() == Some(true) {
                     println!("cargo:rustc-cfg={}", item.name);
-                    println!("cargo::rustc-check-cfg=cfg({})", item.name);
+                } else if val.as_bool() == None {
+                    continue;
                 }
+                println!("cargo::rustc-check-cfg=cfg({})", item.name);
             }
         }
 
