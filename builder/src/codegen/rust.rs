@@ -24,7 +24,7 @@ pub fn generate_consts(
                 writeln!(
                     buffer,
                     "#[allow(dead_code)]\n/// {}\npub const {}: {} = {};",
-                    item.name, item.desc, rust_type, formatted
+                    item.desc, item.name, rust_type, formatted
                 )?;
             }
         }

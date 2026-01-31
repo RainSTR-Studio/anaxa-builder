@@ -19,9 +19,9 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
 name = "anaxa-builder"
-version = "0.4.2"
+version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71af9903d651c13a19880ee93f66eb2ed339f765c29ca6a7b49799f93431f90a"
+checksum = "51b44880e2f22915e4526a16a4bf9b2ab901abeab10286e943fd57b0cf2addcc"
 dependencies = [
  "anyhow",
  "evalexpr",
@@ -35,7 +35,7 @@ dependencies = [
 
 [[package]]
 name = "anaxa-builder"
-version = "0.4.4"
+version = "0.4.6"
 dependencies = [
  "anyhow",
  "evalexpr",
@@ -112,9 +112,9 @@ checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
 
 [[package]]
 name = "cargo-anaxa"
-version = "0.4.3"
+version = "0.4.5"
 dependencies = [
- "anaxa-builder 0.4.2",
+ "anaxa-builder 0.4.5",
  "anyhow",
  "clap",
  "crossterm",
