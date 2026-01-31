@@ -20,21 +20,6 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 [[package]]
 name = "anaxa-builder"
 version = "0.4.2"
-dependencies = [
- "anyhow",
- "evalexpr",
- "petgraph",
- "regex",
- "serde",
- "tempfile",
- "thiserror",
- "toml",
- "walkdir",
-]
-
-[[package]]
-name = "anaxa-builder"
-version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71af9903d651c13a19880ee93f66eb2ed339f765c29ca6a7b49799f93431f90a"
 dependencies = [
@@ -43,6 +28,21 @@ dependencies = [
  "petgraph",
  "regex",
  "serde",
+ "thiserror",
+ "toml",
+ "walkdir",
+]
+
+[[package]]
+name = "anaxa-builder"
+version = "0.4.3"
+dependencies = [
+ "anyhow",
+ "evalexpr",
+ "petgraph",
+ "regex",
+ "serde",
+ "tempfile",
  "thiserror",
  "toml",
  "walkdir",
@@ -112,9 +112,9 @@ checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
 
 [[package]]
 name = "cargo-anaxa"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
- "anaxa-builder 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "anaxa-builder 0.4.2",
  "anyhow",
  "clap",
  "crossterm",
