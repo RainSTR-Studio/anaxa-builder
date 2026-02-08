@@ -237,7 +237,8 @@ impl App {
                 }
                 anaxa_builder::schema::ConfigType::Int
                 | anaxa_builder::schema::ConfigType::Hex
-                | anaxa_builder::schema::ConfigType::String => {
+                | anaxa_builder::schema::ConfigType::String
+                | anaxa_builder::schema::ConfigType::Cstr => {
                     let input = self
                         .values
                         .get(&config.name)
@@ -460,7 +461,8 @@ impl App {
                         }
                     }
                 }
-                anaxa_builder::schema::ConfigType::String => {
+                anaxa_builder::schema::ConfigType::String
+                | anaxa_builder::schema::ConfigType::Cstr => {
                     Some(Value::String(editor.input.clone()))
                 }
                 _ => None,

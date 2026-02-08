@@ -9,6 +9,7 @@ pub enum ConfigType {
     Hex,
     String,
     Choice,
+    Cstr,
 }
 
 impl ConfigType {
@@ -19,7 +20,9 @@ impl ConfigType {
                 .map(|b| if b { "1".into() } else { "0".into() }),
             ConfigType::Int => val.as_integer().map(|i| i.to_string()),
             ConfigType::Hex => val.as_integer().map(|i| format!("0x{:x}", i)),
-            ConfigType::String | ConfigType::Choice => val.as_str().map(|s| format!("\"{}\"", s)),
+            ConfigType::String | ConfigType::Choice | ConfigType::Cstr => {
+                val.as_str().map(|s| format!("\"{}\"", s))
+            }
         }
     }
 
@@ -29,6 +32,12 @@ impl ConfigType {
             ConfigType::Int => val.as_integer().map(|i| i.to_string()),
             ConfigType::Hex => val.as_integer().map(|i| format!("0x{:x}", i)),
             ConfigType::String | ConfigType::Choice => val.as_str().map(|s| format!("\"{}\"", s)),
+            ConfigType::Cstr => val.as_str().map(|s| {
+                format!(
+                    "unsafe {{ ::core::ffi::CStr::from_bytes_with_nul_unchecked(b\"{}\\0\") }}",
+                    s
+                )
+            }),
         }
     }
 
@@ -38,6 +47,7 @@ impl ConfigType {
             ConfigType::Int => "i64",
             ConfigType::Hex => "u64",
             ConfigType::String | ConfigType::Choice => "&str",
+            ConfigType::Cstr => "&'static ::core::ffi::CStr",
         }
     }
 }
@@ -157,7 +167,7 @@ impl ConfigItem {
                     }
                 }
             }
-            ConfigType::String => {
+            ConfigType::String | ConfigType::Cstr => {
                 let val = value.as_str().ok_or_else(|| {
                     format!("Config '{}' expected string, found {:?}", self.name, value)
                 })?;

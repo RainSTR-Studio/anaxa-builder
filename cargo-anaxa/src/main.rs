@@ -84,6 +84,18 @@ enum Commands {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
+    /// Wrapper for cargo test with dynamic features from config
+    Test {
+        /// Path to the local configuration file
+        #[arg(short, long, default_value = ".config")]
+        config_file: PathBuf,
+        /// Do not inject ANAXA_* environment variables
+        #[arg(long)]
+        no_env: bool,
+        /// Additional arguments to pass to cargo test
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
     /// Generate clean config
     Savedefconfig {
         #[arg(short, long)]
@@ -183,6 +195,13 @@ fn main() -> Result<()> {
             args,
         } => {
             run_cargo_wrapper("run", dir, config_file, *no_env, args)?;
+        }
+        Commands::Test {
+            config_file,
+            no_env,
+            args,
+        } => {
+            run_cargo_wrapper("test", dir, config_file, *no_env, args)?;
         }
         Commands::Savedefconfig { out, config_file } => {
             let tree = parser::build_config_tree(dir)?;

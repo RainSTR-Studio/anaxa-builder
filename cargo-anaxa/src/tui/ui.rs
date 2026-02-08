@@ -103,7 +103,7 @@ fn draw_main(f: &mut Frame, app: &mut App, area: Rect) {
                 format!("0x{:x}", val.and_then(|v| v.as_integer()).unwrap_or(0)),
                 Style::default().fg(Color::Yellow),
             ),
-            ConfigType::String | ConfigType::Choice => (
+            ConfigType::String | ConfigType::Choice | ConfigType::Cstr => (
                 val.and_then(|v| v.as_str()).unwrap_or("").to_string(),
                 Style::default().fg(Color::Green),
             ),
