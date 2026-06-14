@@ -1,3 +1,4 @@
+//! Helpers for `build.rs` to integrate Anaxa configuration.
 use crate::{codegen, config_io, parser};
 use anyhow::{Context, Result};
 use std::env;
@@ -12,6 +13,11 @@ pub struct BuildHelper {
 }
 
 impl BuildHelper {
+    /// Create a new helper instance.
+    /// 
+    /// # Errors
+    /// This will return an error if the `OUT_DIR` environment variable 
+    /// is not set, which is required for writing the generated `config.rs`.
     pub fn new() -> Result<Self> {
         let out_dir = env::var_os("OUT_DIR").context("OUT_DIR not set")?.into();
         Ok(Self {
@@ -21,16 +27,19 @@ impl BuildHelper {
         })
     }
 
+    /// Specify the directory to scan for `Kconfig.toml` files.
     pub fn with_kconfig_dir<P: Into<PathBuf>>(mut self, dir: P) -> Self {
         self.kconfig_dir = dir.into();
         self
     }
 
+    /// Specify the path to the configuration file (e.g., `.config`).
     pub fn with_config_file<P: Into<PathBuf>>(mut self, file: P) -> Self {
         self.config_file = file.into();
         self
     }
 
+    /// Build the configuration and emit Cargo instructions.
     pub fn build(self) -> Result<()> {
         check_version_compatibility()?;
         let tree = parser::build_config_tree(&self.kconfig_dir)?;
