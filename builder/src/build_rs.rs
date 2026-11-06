@@ -14,9 +14,9 @@ pub struct BuildHelper {
 
 impl BuildHelper {
     /// Create a new helper instance.
-    /// 
+    ///
     /// # Errors
-    /// This will return an error if the `OUT_DIR` environment variable 
+    /// This will return an error if the `OUT_DIR` environment variable
     /// is not set, which is required for writing the generated `config.rs`.
     pub fn new() -> Result<Self> {
         let out_dir = env::var_os("OUT_DIR").context("OUT_DIR not set")?.into();
@@ -45,7 +45,12 @@ impl BuildHelper {
         let tree = parser::build_config_tree(&self.kconfig_dir)?;
         let configs = parser::flatten_configs(&tree);
         parser::validate_configs(&configs)?;
-        let values = config_io::load_config(&self.config_file, &configs)?;
+        // build 脚本只读配置：文件缺失时用默认值继续，绝不隐式生成 .config
+        let mut warnings = Vec::new();
+        let values = config_io::load_config(&self.config_file, &configs, &mut warnings)?;
+        for w in &warnings {
+            println!("cargo:warning=anaxa: {w}");
+        }
 
         let out_path = self.out_dir.join("config.rs");
         let rust_code = codegen::rust::generate_consts(&configs, &values)?;
@@ -57,10 +62,11 @@ impl BuildHelper {
 
         for item in &configs {
             if let Some(val) = values.get(&item.name) {
-                if val.as_bool() == Some(true) {
-                    println!("cargo:rustc-cfg={}", item.name);
-                } else if val.as_bool() == None {
-                    continue;
+                // 只有布尔项才映射为 cfg；非布尔项没有 cfg 语义
+                match val.as_bool() {
+                    Some(true) => println!("cargo:rustc-cfg={}", item.name),
+                    Some(false) => {}
+                    None => continue,
                 }
                 println!("cargo::rustc-check-cfg=cfg({})", item.name);
             }
@@ -102,7 +108,11 @@ where
     let configs = parser::flatten_configs(&tree);
     parser::validate_configs(&configs)?;
 
-    let values = config_io::load_config(config_file, &configs)?;
+    let mut warnings = Vec::new();
+    let values = config_io::load_config(config_file, &configs, &mut warnings)?;
+    for w in &warnings {
+        println!("cargo:warning=anaxa: {w}");
+    }
 
     let out_dir = env::var_os("OUT_DIR").context("OUT_DIR not set")?;
     let out_path = PathBuf::from(out_dir).join("config.rs");

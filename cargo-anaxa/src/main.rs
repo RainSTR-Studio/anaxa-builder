@@ -3,7 +3,8 @@ mod tui;
 use anaxa_builder::internal::{graph, parser};
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(name = "cargo-anaxa")]
@@ -31,6 +32,8 @@ enum Commands {
         config: PathBuf,
     },
     /// Generate code artifacts (Rust, C, DOT)
+    ///
+    /// 未指定 --c/--rust/--dot 时默认生成全部三种产物。
     Generate {
         /// Output directory for generated files
         #[arg(short, long, default_value = "generated")]
@@ -147,28 +150,36 @@ fn main() -> Result<()> {
             rust,
             dot,
         } => {
+            // 未指定任何产物类型时默认全部生成：静默什么都不做对用户毫无意义
+            let (c, rust, dot) = if !c && !rust && !dot {
+                println!("No artifact selected, generating all (Rust, C, DOT).");
+                (true, true, true)
+            } else {
+                (*c, *rust, *dot)
+            };
+
             let tree = parser::build_config_tree(dir)?;
             let configs = parser::flatten_configs(&tree);
             parser::validate_configs(&configs)?;
-            let values = anaxa_builder::config_io::load_config(config_file, &configs)?;
+            let values = load_config_with_report(config_file, &configs)?;
 
             if !out.exists() {
                 std::fs::create_dir_all(out)?;
             }
 
-            if *rust {
+            if rust {
                 let rust_code = anaxa_builder::codegen::rust::generate_consts(&configs, &values)?;
                 std::fs::write(out.join("config.rs"), rust_code)?;
                 println!("Generated Rust constants in {:?}", out.join("config.rs"));
             }
 
-            if *c {
+            if c {
                 let c_code = anaxa_builder::codegen::c::generate(&configs, &values)?;
                 std::fs::write(out.join("autoconf.h"), c_code)?;
                 println!("Generated C header in {:?}", out.join("autoconf.h"));
             }
 
-            if *dot {
+            if dot {
                 let graph = anaxa_builder::graph::ConfigGraph::build(&configs)?;
                 let dot_code = anaxa_builder::codegen::dot::generate(&graph)?;
                 std::fs::write(out.join("depends.dot"), dot_code)?;
@@ -206,33 +217,83 @@ fn main() -> Result<()> {
         Commands::Savedefconfig { out, config_file } => {
             let tree = parser::build_config_tree(dir)?;
             let configs = parser::flatten_configs(&tree);
-            let values = anaxa_builder::config_io::load_config(config_file, &configs)?;
+            let values = load_config_with_report(config_file, &configs)?;
             let minimal = anaxa_builder::config_io::get_minimal_config(&values, &configs);
             anaxa_builder::config_io::save_config(out, &minimal)?;
-            println!("Saved minimal defconfig to {:?}", out);
+
+            // 只记录"与默认值不同"的项，因此还原时缺失项会自动取 schema 默认值
+            println!(
+                "Saved defconfig with {} non-default entries to {:?} (out of {} configs)",
+                minimal.len(),
+                out,
+                configs.len()
+            );
         }
         Commands::Defconfig { file, config_file } => {
             let tree = parser::build_config_tree(dir)?;
             let configs = parser::flatten_configs(&tree);
-            let values = anaxa_builder::config_io::load_config(file, &configs)?;
+
+            // defconfig 是"以默认值为底、只覆盖差异项"的语义：
+            // 必须先收集 schema 默认值，再用 defconfig 覆盖，否则缺失项会丢值。
+            let explicit = anaxa_builder::config_io::load_file_values(file, &configs)?;
+            let mut values = anaxa_builder::evaluator::collect_defaults(&configs);
+            let touched = override_values(&mut values, &explicit, &configs);
+
             anaxa_builder::config_io::save_config(config_file, &values)?;
-            println!("Updated configuration from {:?} to {:?}", file, config_file);
+            println!(
+                "Wrote {:?} from {:?}: {} entries from schema defaults, {} overridden by defconfig",
+                config_file,
+                file,
+                configs.len() - touched,
+                touched
+            );
         }
     }
     Ok(())
 }
 
+/// 用 defconfig 中的值覆盖 `values`（后者应已填满 schema 默认值），返回被覆盖的条目数。
+///
+/// 只覆盖 schema 中真实存在的键；`load_config` 已剔除未知键并给出告警。
+fn override_values(
+    values: &mut HashMap<String, toml::Value>,
+    overrides: &HashMap<String, toml::Value>,
+    configs: &[anaxa_builder::schema::ConfigItem],
+) -> usize {
+    let mut touched = 0;
+    for item in configs {
+        if let Some(val) = overrides.get(&item.name) {
+            values.insert(item.name.clone(), val.clone());
+            touched += 1;
+        }
+    }
+    touched
+}
+
+/// 读取配置并把条目级告警打印到 stderr（CLI 场景下 stderr 即用户可见通道）。
+fn load_config_with_report(
+    path: &std::path::Path,
+    configs: &[anaxa_builder::schema::ConfigItem],
+) -> Result<HashMap<String, toml::Value>> {
+    let mut warnings = Vec::new();
+    let values = anaxa_builder::config_io::load_config(path, configs, &mut warnings)?;
+    for w in &warnings {
+        eprintln!("Warning: {}", w);
+    }
+    Ok(values)
+}
+
 fn run_cargo_wrapper(
     subcommand: &str,
-    dir: &PathBuf,
-    config_file: &PathBuf,
+    dir: &Path,
+    config_file: &Path,
     no_env: bool,
     args: &[String],
 ) -> Result<()> {
     let tree = parser::build_config_tree(dir)?;
     let configs = parser::flatten_configs(&tree);
     parser::validate_configs(&configs)?;
-    let values = anaxa_builder::config_io::load_config(config_file, &configs)?;
+    let values = load_config_with_report(config_file, &configs)?;
 
     let mut features = Vec::new();
     let mut cfgs = Vec::new();

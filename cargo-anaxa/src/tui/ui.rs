@@ -77,7 +77,8 @@ fn draw_header(f: &mut Frame, area: Rect, breadcrumbs: &str) {
 }
 
 fn draw_main(f: &mut Frame, app: &mut App, area: Rect) {
-    let (configs, children) = app.get_visible_items();
+    // 渲染层只做纯渲染：依赖错误由事件循环写入通知栏，这里直接忽略
+    let (configs, children, _) = app.get_visible_items();
     let mut items = Vec::new();
 
     for config in configs {
@@ -378,7 +379,8 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
 
 fn draw_help_sidebar(f: &mut Frame, app: &App, area: Rect) {
     let selected = app.ui.list_state.selected().unwrap_or(0);
-    let (configs, children) = app.get_visible_items();
+    // 渲染层只做纯渲染：依赖错误由事件循环写入通知栏，这里直接忽略
+    let (configs, children, _) = app.get_visible_items();
 
     let mut help_text = Vec::new();
 

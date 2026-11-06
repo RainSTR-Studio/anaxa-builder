@@ -227,8 +227,9 @@ cargo anaxa build
 # 启动交互式配置
 cargo anaxa menuconfig
 
-# 生成代码
+# 生成代码（不带 --c/--rust/--dot 时默认三种全部生成）
 cargo anaxa generate
+cargo anaxa generate --rust --out build/gen
 ```
 
 ## 值优先级
@@ -238,6 +239,42 @@ cargo anaxa generate
 1. **环境变量**: `ENABLE_NET=true`
 2. **.config 文件**: 用户保存的配置
 3. **Schema 默认值**: Kconfig.toml 中定义的默认值
+
+### 环境变量覆盖
+
+环境变量名与配置名**完全一致**（无前缀），按 schema 声明的类型解析：
+
+| 类型 | 可接受写法 | 示例 |
+|------|-----------|------|
+| `bool` | `1/0`、`true/false`、`yes/no`、`on/off`（大小写不敏感） | `ENABLE_NET=true` |
+| `int` | 十进制，或 `0x` 前缀的十六进制 | `MAX_SOCKETS=0x10` |
+| `string` / `choice` / `cstr` | 原样字符串 | `MODE=FIFO` |
+
+解析后的值同样会过一遍 schema 校验（`range`、`regex`、`options`）。
+与类型不符时**直接报错退出**，不会静默回落到文件值——显式设置却写错，
+继续构建只会产出与预期不符的结果。
+
+`cargo anaxa check/build/run/test` 会把这套覆盖结果再回写成 `ANAXA_<NAME>`
+注入子进程环境；传 `--no-env` 可关闭注入。
+
+### defconfig 语义
+
+`defconfig` 是"以默认值为底、只覆盖差异项"的差异集：
+
+```bash
+# 只记录与默认值不同的条目
+cargo anaxa savedefconfig --out my_defconfig.toml
+
+# 以 schema 默认值为底，用差异集覆盖，产出完整 .config
+cargo anaxa defconfig --file my_defconfig.toml
+```
+
+因此 `defconfig` 文件里缺失的条目会自动回落到 schema 默认值，而不是丢配置。
+
+### 文件创建时机
+
+读取配置（`generate`、`dump`、`*defconfig`、build 脚本）**不会**创建 `.config`。
+只有 `menuconfig` 会在文件缺失时按默认值生成它，并给出提示。
 
 ## 开发路线图
 

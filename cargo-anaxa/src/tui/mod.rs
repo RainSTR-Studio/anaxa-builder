@@ -47,8 +47,6 @@ pub struct App {
     pub root_node: ConfigNode,
     pub values: HashMap<String, Value>,
     pub config_path: PathBuf,
-    pub should_quit: bool,
-    pub flattened_items: Vec<ConfigItem>,
     pub is_dirty: bool,
     pub evaluator: anaxa_builder::evaluator::Evaluator,
     pub ui: UiState,
@@ -57,7 +55,10 @@ pub struct App {
 impl App {
     pub fn new(root_node: ConfigNode, config_path: PathBuf) -> Result<Self> {
         let flattened_items = parser::flatten_configs(&root_node);
-        let values = config_io::load_config(&config_path, &flattened_items)?;
+        // 进入 TUI 是唯一允许"顺手创建 .config"的场景：用户明确要编辑配置
+        let created = config_io::ensure_config(&config_path, &flattened_items)?;
+        let mut warnings = Vec::new();
+        let values = config_io::load_config(&config_path, &flattened_items, &mut warnings)?;
         let mut list_state = ListState::default();
         list_state.select(Some(0));
 
@@ -66,18 +67,27 @@ impl App {
             let _ = evaluator.set_variable(name, val);
         }
 
+        let startup_notice = if created {
+            Some(format!(
+                "Created {} with default values",
+                config_path.display()
+            ))
+        } else if warnings.is_empty() {
+            None
+        } else {
+            Some(warnings.join("; "))
+        };
+
         Ok(Self {
             root_node,
             values,
             config_path,
-            should_quit: false,
-            flattened_items,
             is_dirty: false,
             evaluator,
             ui: UiState {
                 current_node_path: Vec::new(),
                 list_state,
-                notification: None,
+                notification: startup_notice,
                 show_quit_confirm: false,
                 show_help: false,
                 help_scroll: 0,
@@ -114,38 +124,81 @@ impl App {
         path.join(" > ")
     }
 
-    pub fn is_visible_config(&self, config: &ConfigItem) -> bool {
-        config
-            .depends_on
-            .as_ref()
-            .map(|expr| self.evaluator.check_dependency(expr).unwrap_or(true))
-            .unwrap_or(true)
+    /// 判断配置项当前是否可见。
+    ///
+    /// 依赖表达式求值失败时返回错误而不是当成可见：表达式错误（未定义符号、
+    /// 类型不匹配）属于 schema 缺陷，正常应由 `config-check` 在校验阶段拦截。
+    /// 这里保留错误是为了让界面能把它展示出来，而不是让错误项静默常驻。
+    fn is_visible_config(&self, config: &ConfigItem) -> std::result::Result<bool, String> {
+        match config.depends_on.as_ref() {
+            Some(expr) => self
+                .evaluator
+                .check_dependency(expr)
+                .map_err(|e| format!("depends_on of config '{}': {:#}", config.name, e)),
+            None => Ok(true),
+        }
     }
 
-    pub fn is_visible_node(&self, node: &ConfigNode) -> bool {
-        node.depends_on
-            .as_ref()
-            .map(|expr| self.evaluator.check_dependency(expr).unwrap_or(true))
-            .unwrap_or(true)
+    /// 判断菜单节点当前是否可见，错误语义同 [`Self::is_visible_config`]。
+    fn is_visible_node(&self, node: &ConfigNode) -> std::result::Result<bool, String> {
+        match node.depends_on.as_ref() {
+            Some(expr) => self
+                .evaluator
+                .check_dependency(expr)
+                .map_err(|e| format!("depends_on of menu '{}': {:#}", node.desc, e)),
+            None => Ok(true),
+        }
     }
 
-    pub fn get_visible_items(&self) -> (Vec<&ConfigItem>, Vec<&ConfigNode>) {
-        let node = self.get_current_node();
-        let configs: Vec<&ConfigItem> = node
-            .configs
-            .iter()
-            .filter(|c| self.is_visible_config(c))
-            .collect();
-        let children: Vec<&ConfigNode> = node
-            .children
-            .iter()
-            .filter(|n| self.is_visible_node(n))
-            .collect();
-        (configs, children)
+    /// 收集当前节点下可见的配置项与子菜单，并返回求值错误列表。
+    ///
+    /// 求值失败的依赖项视为可见（TUI 无法中断，保留它以免界面缺项），
+    /// 由调用方决定如何展示错误——事件循环会把错误写入通知栏，
+    /// 渲染层只做纯渲染。
+    pub fn get_visible_items(&self) -> (Vec<&ConfigItem>, Vec<&ConfigNode>, Vec<String>) {
+        let mut target = &self.root_node;
+        for &index in &self.ui.current_node_path {
+            target = &target.children[index];
+        }
+
+        let mut errors = Vec::new();
+        let mut configs = Vec::new();
+        for item in &target.configs {
+            match self.is_visible_config(item) {
+                Ok(true) => configs.push(item),
+                Ok(false) => {}
+                Err(e) => {
+                    errors.push(e);
+                    configs.push(item);
+                }
+            }
+        }
+        let mut children = Vec::new();
+        for child in &target.children {
+            match self.is_visible_node(child) {
+                Ok(true) => children.push(child),
+                Ok(false) => {}
+                Err(e) => {
+                    errors.push(e);
+                    children.push(child);
+                }
+            }
+        }
+        (configs, children, errors)
+    }
+
+    /// 把依赖求值错误写入通知栏（通知栏只有一条消息，多处错误合并）。
+    ///
+    /// 只在确有错误时覆盖通知，避免擦掉光标移动等操作产生的提示。
+    pub fn notify_dependency_errors(&mut self, errors: &[String]) {
+        if errors.is_empty() {
+            return;
+        }
+        self.notify(format!("Dependency error: {}", errors.join("; ")));
     }
 
     pub fn next(&mut self) {
-        let (configs, children) = self.get_visible_items();
+        let (configs, children, _) = self.get_visible_items();
         let total = configs.len() + children.len();
         if total == 0 {
             return;
@@ -165,7 +218,7 @@ impl App {
     }
 
     pub fn previous(&mut self) {
-        let (configs, children) = self.get_visible_items();
+        let (configs, children, _) = self.get_visible_items();
         let total = configs.len() + children.len();
         if total == 0 {
             return;
@@ -186,7 +239,7 @@ impl App {
 
     pub fn enter(&mut self) {
         let selected = self.ui.list_state.selected().unwrap_or(0);
-        let (configs, children) = self.get_visible_items();
+        let (configs, children, _) = self.get_visible_items();
 
         if selected >= configs.len() {
             let child_index_in_visible = selected - configs.len();
@@ -214,13 +267,13 @@ impl App {
 
     pub fn toggle_bool(&mut self) {
         let selected = self.ui.list_state.selected().unwrap_or(0);
-        let (visible_configs, _) = self.get_visible_items();
-
-        let config = if selected < visible_configs.len() {
-            Some(visible_configs[selected].clone())
-        } else {
-            None
+        // 先取出目标项（克隆），释放对 self 的不可变借用后再写通知
+        let (config, errors) = {
+            let (visible_configs, _, errors) = self.get_visible_items();
+            let config = visible_configs.get(selected).map(|c| (*c).clone());
+            (config, errors)
         };
+        self.notify_dependency_errors(&errors);
 
         if let Some(config) = config {
             match config.config_type {
@@ -408,12 +461,14 @@ impl App {
                 // We need to find the index in the VISIBLE items
                 // This is tricky because the index in search result is real index in node.configs
                 // But the TUI list shows visible configs then visible children.
-                let (visible_configs, _) = self.get_visible_items();
-                let config_name = &self.get_current_node().configs[*index].name;
+                let (visible_configs, _, errors) = self.get_visible_items();
+                let config_name = self.get_current_node().configs[*index].name.clone();
 
-                if let Some(pos) = visible_configs.iter().position(|c| &c.name == config_name) {
+                if let Some(pos) = visible_configs.iter().position(|c| c.name == config_name) {
                     self.ui.list_state.select(Some(pos));
+                    self.notify_dependency_errors(&errors);
                 } else {
+                    self.notify_dependency_errors(&errors);
                     // Item might be hidden by dependency, but we jumped to the parent node anyway
                     self.ui.list_state.select(Some(0));
                     self.notify(
