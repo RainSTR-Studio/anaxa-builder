@@ -36,6 +36,23 @@ pub fn load_config(
     Ok(values)
 }
 
+/// 读取配置并求出"实际生效"的值：`depends_on` 不满足的项按隐含值回落。
+///
+/// 与 [`load_config`] 的区别只在最后一步——凡是会把配置写进产物的调用方
+/// （代码生成、`cargo` 包装器、`savedefconfig`）都应该用这个函数，
+/// 否则"父项已关闭、子项仍出现在头文件里"的矛盾会一直存在。
+///
+/// TUI 内部编辑用 [`load_config`]：它需要保留原始值，这样把父项重新打开时
+/// 子项能恢复成用户上次的选择。
+pub fn load_effective_config(
+    path: &Path,
+    items: &[ConfigItem],
+    warnings: &mut Vec<String>,
+) -> Result<HashMap<String, Value>> {
+    let values = load_config(path, items, warnings)?;
+    evaluator::effective_values(items, &values)
+}
+
 /// 把已经解析出来的 `.config` 键值并入 `values`。
 ///
 /// 未知键与类型非法键不会中断加载：前者忽略，后者回落到默认值，

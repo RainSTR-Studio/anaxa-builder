@@ -141,6 +141,10 @@ fn main() -> Result<()> {
         }
         Commands::Menuconfig { config } => {
             let tree = parser::build_config_tree(dir)?;
+            // 进入 TUI 之前先做静态校验：非法 depends_on 在备用屏幕里只会显示成
+            // 一条转瞬即逝的通知，退出后就再也看不到，用户无法据此定位问题
+            let configs = parser::flatten_configs(&tree);
+            parser::validate_configs(&configs)?;
             tui::run(tree, config.clone())?;
         }
         Commands::Generate {
@@ -239,6 +243,9 @@ fn main() -> Result<()> {
             let mut values = anaxa_builder::evaluator::collect_defaults(&configs);
             let touched = override_values(&mut values, &explicit, &configs);
 
+            // 落盘写生效值：defconfig 的目的是"重建同一次构建"，
+            // 把依赖不满足、实际不生效的差异项写进去只会制造不稳定的往返
+            let values = anaxa_builder::evaluator::effective_values(&configs, &values)?;
             anaxa_builder::config_io::save_config(config_file, &values)?;
             println!(
                 "Wrote {:?} from {:?}: {} entries from schema defaults, {} overridden by defconfig",
@@ -271,12 +278,16 @@ fn override_values(
 }
 
 /// 读取配置并把条目级告警打印到 stderr（CLI 场景下 stderr 即用户可见通道）。
+///
+/// 返回的是**生效值**：`depends_on` 不满足的项已按隐含值回落。凡是会把配置
+/// 写进产物或注入编译参数的调用方都必须走这里，否则关闭的父项下面那些子项
+/// 依然会出现在 `autoconf.h`、`--cfg` 和 `--features` 里。
 fn load_config_with_report(
     path: &std::path::Path,
     configs: &[anaxa_builder::schema::ConfigItem],
 ) -> Result<HashMap<String, toml::Value>> {
     let mut warnings = Vec::new();
-    let values = anaxa_builder::config_io::load_config(path, configs, &mut warnings)?;
+    let values = anaxa_builder::config_io::load_effective_config(path, configs, &mut warnings)?;
     for w in &warnings {
         eprintln!("Warning: {}", w);
     }

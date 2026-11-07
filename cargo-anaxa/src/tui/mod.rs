@@ -45,6 +45,11 @@ pub struct UiState {
 
 pub struct App {
     pub root_node: ConfigNode,
+    /// 全部配置项的扁平列表。
+    ///
+    /// 求值时必须知道完整 schema 而不只是当前节点的项：`depends_on` 可以引用
+    /// 任意位置的定义，缺失绑定会让 evalexpr 报变量未定义，把依赖项误判成不可见。
+    pub items: Vec<ConfigItem>,
     pub values: HashMap<String, Value>,
     pub config_path: PathBuf,
     pub is_dirty: bool,
@@ -58,14 +63,14 @@ impl App {
         // 进入 TUI 是唯一允许"顺手创建 .config"的场景：用户明确要编辑配置
         let created = config_io::ensure_config(&config_path, &flattened_items)?;
         let mut warnings = Vec::new();
+        // 读原始值而非生效值：用户在界面上把依赖项重新打开时，
+        // 其子项要能回到当初存下的值，而不能已经被强制改写成 default
         let values = config_io::load_config(&config_path, &flattened_items, &mut warnings)?;
         let mut list_state = ListState::default();
         list_state.select(Some(0));
 
         let mut evaluator = anaxa_builder::evaluator::Evaluator::new();
-        for (name, val) in &values {
-            let _ = evaluator.set_variable(name, val);
-        }
+        evaluator.bind_all(&flattened_items, &values)?;
 
         let startup_notice = if created {
             Some(format!(
@@ -80,6 +85,7 @@ impl App {
 
         Ok(Self {
             root_node,
+            items: flattened_items,
             values,
             config_path,
             is_dirty: false,
@@ -100,10 +106,12 @@ impl App {
         })
     }
 
+    /// 把当前 `values` 同步到求值上下文。
+    ///
+    /// 使用 `bind_all` 而不是逐项 `set_variable`：后者只绑定 `values` 里存在的键，
+    /// 缺失项（从未写进 `.config` 的）在 `depends_on` 中被引用时会求值失败。
     pub fn update_evaluator(&mut self) {
-        for (name, val) in &self.values {
-            let _ = self.evaluator.set_variable(name, val);
-        }
+        let _ = self.evaluator.bind_all(&self.items, &self.values);
     }
 
     pub fn get_current_node(&self) -> &ConfigNode {
@@ -623,8 +631,16 @@ impl App {
         false
     }
 
+    /// 保存配置。
+    ///
+    /// 落盘的是"生效值"：依赖不满足的项按 Kconfig 语义写成 n(或 default)，
+    /// 这样 `.config` 与 build 脚本实际使用的值一致，不会出现"文件里写着 y、
+    /// 但你 build 出来是 n"的错觉。写回后同步内存值，使界面与文件保持一致。
     pub fn save(&mut self) -> Result<()> {
-        config_io::save_config(&self.config_path, &self.values)?;
+        let effective = anaxa_builder::evaluator::effective_values(&self.items, &self.values)?;
+        config_io::save_config(&self.config_path, &effective)?;
+        self.values = effective;
+        self.update_evaluator();
         self.is_dirty = false;
         self.notify(format!("Config saved to {:?}", self.config_path));
         Ok(())

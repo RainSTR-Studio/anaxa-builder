@@ -286,8 +286,10 @@ cargo anaxa defconfig --file my_defconfig.toml
 - [x] 显式菜单映射 ([menu])
 - [x] 搜索功能增强 (TUI)
 - [x] 版本校验 (CLI vs Library)
-- [ ] TUI 帮助系统完善
-- [ ] build.rs 深度集成
+- [x] `depends_on` 不可满足时按 Kconfig 语义裁剪值
+- [x] [menu] 路径错误、重复挂载、孤立节点改为报错
+- [x] build 脚本与 build.rs 逻辑合并，逐文件 rerun 追踪
+- [ ] 待实现功能的设计与实施建议，见 [docs/ROADMAP.md](docs/ROADMAP.md)
 
 ## 贡献
 

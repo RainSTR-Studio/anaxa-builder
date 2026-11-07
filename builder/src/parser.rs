@@ -30,13 +30,35 @@ fn diff_paths(path: &Path, base: &Path) -> PathBuf {
     result
 }
 
+/// 解析结果：配置树 + 参与解析的全部 `Kconfig.toml` 绝对路径。
+///
+/// `files` 供 `build.rs` 逐文件发射 `cargo:rerun-if-changed`：仅监听扫描根目录
+/// 会漏掉 `[menu]` 通过 `../` 引用到扫描根之外的外部目录。
+#[derive(Debug, Clone)]
+pub struct ConfigTree {
+    pub root: ConfigNode,
+    pub files: Vec<PathBuf>,
+}
+
 /// Recursively scans the given root directory for `Kconfig.toml` files
 /// and builds a hierarchical `ConfigNode` tree.
 pub fn build_config_tree<P: AsRef<Path>>(root: P) -> Result<ConfigNode> {
+    Ok(build_config_tree_detailed(root)?.root)
+}
+
+/// 同 [`build_config_tree`]，但额外返回参与解析的 `Kconfig.toml` 文件清单。
+///
+/// `[menu]` 指向的路径若不存在、或存在但没有 `Kconfig.toml`、或被多个父菜单
+/// 同时声明，都会累积为本函数的错误，而不是静默丢失菜单项——静默跳过会让
+/// "路径写错"表现为"整个菜单凭空消失"，用户无从排查。
+pub fn build_config_tree_detailed<P: AsRef<Path>>(root: P) -> Result<ConfigTree> {
     let root_path = root.as_ref().canonicalize()?;
     let mut nodes: BTreeMap<PathBuf, ConfigNode> = BTreeMap::new();
     // Map from child path to explicit parent path
     let mut explicit_links: BTreeMap<PathBuf, PathBuf> = BTreeMap::new();
+    // 参与解析的 Kconfig.toml，按发现顺序去重后返回给调用方做增量追踪
+    let mut files: Vec<PathBuf> = Vec::new();
+    let mut errors: Vec<String> = Vec::new();
 
     let mut queue = VecDeque::new();
     queue.push_back(root_path.clone());
@@ -49,11 +71,16 @@ pub fn build_config_tree<P: AsRef<Path>>(root: P) -> Result<ConfigNode> {
         }
         scanned_roots.insert(scan_root.clone());
 
-        for entry in WalkDir::new(&scan_root)
-            .follow_links(true)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
+        for entry in WalkDir::new(&scan_root).follow_links(true).into_iter() {
+            // 遍历失败不能静默丢弃：漏读一个目录等于漏掉整棵子树里的配置项
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(e) => {
+                    errors.push(format!("failed to scan {:?}: {}", scan_root.display(), e));
+                    continue;
+                }
+            };
+
             if entry.file_name() == "Kconfig.toml" {
                 let path = entry.path();
                 let abs_path = path.canonicalize().unwrap_or(path.to_path_buf());
@@ -73,20 +100,52 @@ pub fn build_config_tree<P: AsRef<Path>>(root: P) -> Result<ConfigNode> {
                 })?;
 
                 if let Some(menu) = &kconfig.menu {
-                    for target_str in menu.values() {
+                    for (label, target_str) in menu {
                         let mut target_path = parent_dir.join(target_str);
 
                         if target_path.file_name() == Some(std::ffi::OsStr::new("Kconfig.toml")) {
                             target_path.pop();
                         }
 
-                        if let Ok(canon_target) = target_path.canonicalize() {
-                            if !scanned_roots.iter().any(|r| canon_target.starts_with(r)) {
-                                queue.push_back(canon_target.clone());
+                        let canon_target = match target_path.canonicalize() {
+                            Ok(p) => p,
+                            Err(_) => {
+                                errors.push(format!(
+                                    "[menu] entry '{}' in {:?} points to '{}', which does not exist",
+                                    label, abs_path, target_str
+                                ));
+                                continue;
                             }
+                        };
 
-                            let child_rel = diff_paths(&canon_target, &root_path);
-                            explicit_links.insert(child_rel, rel_path.clone());
+                        if !canon_target.join("Kconfig.toml").is_file() {
+                            errors.push(format!(
+                                "[menu] entry '{}' in {:?} points to '{}', which contains no Kconfig.toml",
+                                label, abs_path, target_str
+                            ));
+                            continue;
+                        }
+
+                        // 已经被自动扫描收录的目录无需再入队：
+                        // 重新扫描同一目录会让队列空转，而 nodes/findme 已有去重兜底
+                        let already_scanned =
+                            scanned_roots.iter().any(|r| canon_target.starts_with(r));
+                        if !already_scanned {
+                            queue.push_back(canon_target.clone());
+                        }
+
+                        let child_rel = diff_paths(&canon_target, &root_path);
+                        if let Some(previous_parent) =
+                            explicit_links.insert(child_rel.clone(), rel_path.clone())
+                        {
+                            // 同一对父子重复声明是冗余但无害的写法；只有跨父级的
+                            // 重复挂载才是错误（会生成两条 import 路径）
+                            if previous_parent != rel_path {
+                                errors.push(format!(
+                                    "[menu] entry '{}' in {:?} re-links {:?}, which is already mapped under {:?}",
+                                    label, abs_path, child_rel, previous_parent
+                                ));
+                            }
                         }
                     }
                 }
@@ -95,6 +154,10 @@ pub fn build_config_tree<P: AsRef<Path>>(root: P) -> Result<ConfigNode> {
                     .title
                     .clone()
                     .unwrap_or_else(|| rel_path.to_string_lossy().into_owned());
+
+                if !files.contains(&abs_path) {
+                    files.push(abs_path.clone());
+                }
 
                 nodes.insert(
                     rel_path.clone(),
@@ -110,6 +173,15 @@ pub fn build_config_tree<P: AsRef<Path>>(root: P) -> Result<ConfigNode> {
                 );
             }
         }
+    }
+
+    // 结构性错误必须先于树装配上报：装配失败时（如找不到根 Kconfig.toml）
+    // 用户只会看到一系列连锁错误，而真正的原因（比如某个菜单项写错了路径）被淹没
+    if !errors.is_empty() {
+        anyhow::bail!(
+            "Failed to build configuration tree:\n  - {}",
+            errors.join("\n  - ")
+        );
     }
 
     // Assemble the tree
@@ -153,9 +225,21 @@ pub fn build_config_tree<P: AsRef<Path>>(root: P) -> Result<ConfigNode> {
         }
     }
 
-    nodes
+    let root = nodes
         .remove(&PathBuf::new())
-        .context("No root Kconfig.toml found in the root directory")
+        .context("No root Kconfig.toml found in the root directory")?;
+
+    // 装配后仍留在 nodes 里的节点无法从根到达，其配置项永远不会出现在菜单或
+    // 产物里。这同样属于"路径写错却无声无息"的一类，必须报出来。
+    if !nodes.is_empty() {
+        let orphans: Vec<String> = nodes.keys().map(|p| format!("{p:?}")).collect();
+        anyhow::bail!(
+            "Configuration nodes are unreachable from the root menu: {}",
+            orphans.join(", ")
+        );
+    }
+
+    Ok(ConfigTree { root, files })
 }
 
 /// Helper to flatten the hierarchical tree into a flat list of items
@@ -452,5 +536,96 @@ mod tests {
         assert!(!is_valid_identifier("1A"));
         assert!(!is_valid_identifier("A-B"));
         assert!(!is_valid_identifier(""));
+    }
+
+    /// 写一个最小可用的 Kconfig.toml，`menu` 为空对象时即"没有子菜单"。
+    fn write_kconfig(dir: &Path, extra: &str) {
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(
+            dir.join("Kconfig.toml"),
+            format!("title = \"T\"\ndesc = \"{}\"\n{extra}\n", dir.display()),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn menu_entry_pointing_nowhere_is_an_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_kconfig(tmp.path(), "[menu]\n\"Ghost\" = \"missing-dir\"");
+        let err = build_config_tree_detailed(tmp.path())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("does not exist"), "{err}");
+    }
+
+    #[test]
+    fn menu_entry_without_kconfig_is_an_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_kconfig(tmp.path(), "[menu]\n\"Empty\" = \"empty-dir\"");
+        std::fs::create_dir_all(tmp.path().join("empty-dir")).unwrap();
+        let err = build_config_tree_detailed(tmp.path())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("contains no Kconfig.toml"), "{err}");
+    }
+
+    #[test]
+    fn redundant_link_inside_scanned_subtree_is_accepted() {
+        // 子目录本来就在扫描范围内时，再写一次 [menu] 只是显式声明，不应报错
+        let tmp = tempfile::tempdir().unwrap();
+        write_kconfig(tmp.path(), "[menu]\n\"Sub\" = \"sub\"");
+        write_kconfig(&tmp.path().join("sub"), "");
+
+        let tree = build_config_tree_detailed(tmp.path()).unwrap();
+        assert_eq!(tree.root.children.len(), 1, "{}", tree.files.len());
+    }
+
+    #[test]
+    fn menu_relinking_same_dir_under_two_parents_is_an_error() {
+        // 同一目录被两个父级同时挂载会生成两条冲突的导入路径
+        let tmp = tempfile::tempdir().unwrap();
+        write_kconfig(
+            tmp.path(),
+            "[menu]\n\"A\" = \"a\"\n\"B\" = \"b\"\n\"Shared\" = \"shared\"",
+        );
+        write_kconfig(&tmp.path().join("shared"), "");
+        write_kconfig(&tmp.path().join("a"), "[menu]\n\"Shared\" = \"../shared\"");
+        write_kconfig(&tmp.path().join("b"), "");
+
+        let err = build_config_tree_detailed(tmp.path())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("re-links"), "{err}");
+    }
+
+    #[test]
+    fn reports_every_broken_menu_entry_at_once() {
+        // 逐个报错会让用户改一处重跑一次，必须一次性列出全部问题
+        let tmp = tempfile::tempdir().unwrap();
+        write_kconfig(tmp.path(), "[menu]\n\"A\" = \"gone-a\"\n\"B\" = \"gone-b\"");
+        let err = build_config_tree_detailed(tmp.path())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("gone-a") && err.contains("gone-b"), "{err}");
+    }
+
+    #[test]
+    fn tree_lists_every_kconfig_file_for_rerun_tracking() {
+        // build 脚本要靠这份清单告诉 cargo 哪些文件变化需要重新生成
+        let tmp = tempfile::tempdir().unwrap();
+        write_kconfig(tmp.path(), "[menu]\n\"Sub\" = \"nested/sub\"");
+        let canonical_sub = tmp.path().join("nested").join("sub");
+        write_kconfig(&canonical_sub, "");
+
+        let tree = build_config_tree_detailed(tmp.path()).unwrap();
+        assert_eq!(tree.files.len(), 2, "{:?}", tree.files);
+        assert!(tree.files.iter().any(|p| p.starts_with(&canonical_sub)));
+        // root 不能被重复计入
+        let roots = tree
+            .files
+            .iter()
+            .filter(|p| p.parent() == Some(tmp.path()))
+            .count();
+        assert_eq!(roots, 1, "{:?}", tree.files);
     }
 }
